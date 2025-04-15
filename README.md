@@ -21,25 +21,37 @@ The infrastructure is split into four main components:
 
 ## Deployment Steps
 
+### 0. Set Environment Variables
+
+```bash
+# Set the environment name to be used across all stacks
+export ENV_NAME=aurora-eks-amp-monitoring
+export AWS_REGION=ap-northeast-2
+
+# Verify the variables
+echo "Environment Name: $ENV_NAME"
+echo "AWS Region: $AWS_REGION"
+```
+
 ### 1. Deploy the Networking Stack
 
 ```bash
 # Deploy the networking stack
 aws cloudformation create-stack \
-  --stack-name aurora-eks-amp-monitoring-network \
+  --stack-name ${ENV_NAME}-network \
   --template-body file://networking-stack.yaml \
   --capabilities CAPABILITY_IAM \
   --parameters \
-    ParameterKey=EnvironmentName,ParameterValue=aurora-eks-amp-monitoring \
+    ParameterKey=EnvironmentName,ParameterValue=${ENV_NAME} \
     ParameterKey=VpcCidr,ParameterValue=10.0.0.0/16
 
 # Wait for stack creation to complete
 aws cloudformation wait stack-create-complete \
-  --stack-name aurora-eks-amp-monitoring-network
+  --stack-name ${ENV_NAME}-network
 
 # Validate stack outputs
 aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-network \
+  --stack-name ${ENV_NAME}-network \
   --query 'Stacks[0].Outputs'
 ```
 
@@ -48,33 +60,33 @@ aws cloudformation describe-stacks \
 ```bash
 # Get networking stack outputs
 export VPC_ID=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-network \
+  --stack-name ${ENV_NAME}-network \
   --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' \
   --output text)
 
 export PRIVATE_SUBNETS=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-network \
+  --stack-name ${ENV_NAME}-network \
   --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnets`].OutputValue' \
   --output text)
 
 # Deploy the EKS stack
 aws cloudformation create-stack \
-  --stack-name aurora-eks-amp-monitoring-eks \
+  --stack-name ${ENV_NAME}-eks \
   --template-body file://eks-stack.yaml \
   --capabilities CAPABILITY_IAM \
   --parameters \
-    ParameterKey=EnvironmentName,ParameterValue=aurora-eks-amp-monitoring \
+    ParameterKey=EnvironmentName,ParameterValue=${ENV_NAME} \
     ParameterKey=VpcId,ParameterValue=$VPC_ID \
     ParameterKey=PrivateSubnets,ParameterValue=$PRIVATE_SUBNETS
 
 # Wait for stack creation to complete
 aws cloudformation wait stack-create-complete \
-  --stack-name aurora-eks-amp-monitoring-eks
+  --stack-name ${ENV_NAME}-eks
 
 # Configure kubectl
 aws eks update-kubeconfig \
-  --name aurora-eks-amp-monitoring-eks \
-  --region ap-northeast-2
+  --name ${ENV_NAME}-eks \
+  --region $AWS_REGION
 
 # Validate EKS cluster
 kubectl get nodes
@@ -85,26 +97,26 @@ kubectl get nodes
 ```bash
 # Get networking stack outputs
 export VPC_ID=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-network \
+  --stack-name ${ENV_NAME}-network \
   --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' \
   --output text)
 
 export DATABASE_SUBNETS=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-network \
+  --stack-name ${ENV_NAME}-network \
   --query 'Stacks[0].Outputs[?OutputKey==`DatabaseSubnets`].OutputValue' \
   --output text)
 
 export PRIVATE_SUBNET_CIDRS=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-network \
+  --stack-name ${ENV_NAME}-network \
   --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnetCidrs`].OutputValue' \
   --output text)
 
 # Deploy the database stack
 aws cloudformation create-stack \
-  --stack-name aurora-eks-amp-monitoring-db \
+  --stack-name ${ENV_NAME}-db \
   --template-body file://database-stack.yaml \
   --parameters \
-    ParameterKey=EnvironmentName,ParameterValue=aurora-eks-amp-monitoring \
+    ParameterKey=EnvironmentName,ParameterValue=${ENV_NAME} \
     ParameterKey=VpcId,ParameterValue=$VPC_ID \
     ParameterKey=DatabaseSubnets,ParameterValue=$DATABASE_SUBNETS \
     ParameterKey=PrivateSubnetCidrs,ParameterValue=$PRIVATE_SUBNET_CIDRS \
@@ -115,11 +127,11 @@ aws cloudformation create-stack \
 
 # Wait for stack creation to complete
 aws cloudformation wait stack-create-complete \
-  --stack-name aurora-eks-amp-monitoring-db
+  --stack-name ${ENV_NAME}-db
 
 # Validate database endpoints
 aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-db \
+  --stack-name ${ENV_NAME}-db \
   --query 'Stacks[0].Outputs'
 ```
 
@@ -131,33 +143,33 @@ kubectl create namespace observability
 
 # Get required parameters
 export VPC_ID=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-network \
+  --stack-name ${ENV_NAME}-network \
   --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' \
   --output text)
 
 export OIDC_PROVIDER_URL=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-eks \
+  --stack-name ${ENV_NAME}-eks \
   --query 'Stacks[0].Outputs[?OutputKey==`OIDCProviderUrl`].OutputValue' \
   --output text)
 
 # Deploy the monitoring stack
 aws cloudformation create-stack \
-  --stack-name aurora-eks-amp-monitoring-monitoring \
+  --stack-name ${ENV_NAME}-monitoring \
   --template-body file://monitoring-stack.yaml \
   --capabilities CAPABILITY_IAM \
   --parameters \
-    ParameterKey=EnvironmentName,ParameterValue=aurora-eks-amp-monitoring \
+    ParameterKey=EnvironmentName,ParameterValue=${ENV_NAME} \
     ParameterKey=EksOidcProviderUrl,ParameterValue=$OIDC_PROVIDER_URL \
     ParameterKey=VpcId,ParameterValue=$VPC_ID \
-    ParameterKey=Region,ParameterValue=ap-northeast-2
+    ParameterKey=Region,ParameterValue=$AWS_REGION
 
 # Wait for stack creation to complete
 aws cloudformation wait stack-create-complete \
-  --stack-name aurora-eks-amp-monitoring-monitoring
+  --stack-name ${ENV_NAME}-monitoring
 
 # Validate monitoring stack outputs
 aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-monitoring \
+  --stack-name ${ENV_NAME}-monitoring \
   --query 'Stacks[0].Outputs'
 ```
 
@@ -172,14 +184,14 @@ helm repo update
 
 # Get Load Balancer Controller role ARN
 export LB_ROLE_ARN=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-eks \
+  --stack-name ${ENV_NAME}-eks \
   --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerControllerRoleArn`].OutputValue' \
   --output text)
 
 # Install AWS Load Balancer Controller
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
-  --set clusterName=aurora-eks-amp-monitoring-eks \
+  --set clusterName=${ENV_NAME}-eks \
   --set serviceAccount.name=aws-load-balancer-controller \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=$LB_ROLE_ARN
 
@@ -192,16 +204,16 @@ kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-cont
 ```bash
 # Get required parameters
 export AMP_ROLE_ARN=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-monitoring \
+  --stack-name ${ENV_NAME}-monitoring \
   --query 'Stacks[0].Outputs[?OutputKey==`AdotCollectorServiceAccountRoleArn`].OutputValue' \
   --output text)
 
 export AMP_ENDPOINT=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-monitoring \
+  --stack-name ${ENV_NAME}-monitoring \
   --query 'Stacks[0].Outputs[?OutputKey==`PrometheusEndpoint`].OutputValue' \
   --output text)
 
-export AWS_REGION=ap-northeast-2
+export AWS_REGION=$AWS_REGION
 
 # Deploy ADOT Collector
 envsubst < k8s/adot-collector.yaml | kubectl apply -f -
@@ -216,16 +228,16 @@ kubectl logs -n observability -l app=adot-collector
 ```bash
 # Get required parameters
 export GRAFANA_ROLE_ARN=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-monitoring \
+  --stack-name ${ENV_NAME}-monitoring \
   --query 'Stacks[0].Outputs[?OutputKey==`GrafanaServiceAccountRoleArn`].OutputValue' \
   --output text)
 
 export GRAFANA_SG_ID=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-monitoring \
+  --stack-name ${ENV_NAME}-monitoring \
   --query 'Stacks[0].Outputs[?OutputKey==`GrafanaSecurityGroupId`].OutputValue' \
   --output text)
 
-export AWS_REGION=ap-northeast-2
+export AWS_REGION=$AWS_REGION
 export AMP_ENDPOINT=$AMP_ENDPOINT
 
 # Deploy Grafana
@@ -241,12 +253,12 @@ kubectl get svc -n observability grafana
 ```bash
 # Get database endpoints
 export MYSQL_ENDPOINT1=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-db \
+  --stack-name ${ENV_NAME}-db \
   --query 'Stacks[0].Outputs[?OutputKey==`MySQLInstance1Endpoint`].OutputValue' \
   --output text)
 
 export MYSQL_ENDPOINT2=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-db \
+  --stack-name ${ENV_NAME}-db \
   --query 'Stacks[0].Outputs[?OutputKey==`MySQLInstance2Endpoint`].OutputValue' \
   --output text)
 
@@ -260,12 +272,12 @@ envsubst < k8s/mysql-exporter.yaml | kubectl apply -f -
 
 # Get PostgreSQL endpoints
 export POSTGRESQL_ENDPOINT1=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-db \
+  --stack-name ${ENV_NAME}-db \
   --query 'Stacks[0].Outputs[?OutputKey==`PostgreSQLInstance1Endpoint`].OutputValue' \
   --output text)
 
 export POSTGRESQL_ENDPOINT2=$(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-db \
+  --stack-name ${ENV_NAME}-db \
   --query 'Stacks[0].Outputs[?OutputKey==`PostgreSQLInstance2Endpoint`].OutputValue' \
   --output text)
 
@@ -333,7 +345,7 @@ kubectl get svc -n observability grafana -o jsonpath='{.status.loadBalancer.ingr
 aws sts get-caller-identity
 
 # Update kubeconfig
-aws eks update-kubeconfig --name aurora-eks-amp-monitoring-eks --region ap-northeast-2
+aws eks update-kubeconfig --name ${ENV_NAME}-eks --region $AWS_REGION
 
 # Check authentication
 kubectl auth can-i get pods
@@ -349,7 +361,7 @@ kubectl logs -n observability -l app=postgresql-exporter-one
 
 # Verify security group rules
 aws ec2 describe-security-groups --group-ids $(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-db \
+  --stack-name ${ENV_NAME}-db \
   --query 'Stacks[0].Outputs[?OutputKey==`MySQLSecurityGroup`].OutputValue' \
   --output text)
 ```
@@ -361,7 +373,7 @@ kubectl logs -n observability -l app=adot-collector
 
 # Verify AMP workspace
 aws amp describe-workspace --workspace-id $(aws cloudformation describe-stacks \
-  --stack-name aurora-eks-amp-monitoring-monitoring \
+  --stack-name ${ENV_NAME}-monitoring \
   --query 'Stacks[0].Outputs[?OutputKey==`PrometheusWorkspaceId`].OutputValue' \
   --output text)
 ```
@@ -388,16 +400,16 @@ kubectl delete -f k8s/adot-collector.yaml
 helm uninstall aws-load-balancer-controller -n kube-system
 
 # 2. Delete CloudFormation stacks
-aws cloudformation delete-stack --stack-name aurora-eks-amp-monitoring-monitoring
-aws cloudformation delete-stack --stack-name aurora-eks-amp-monitoring-db
-aws cloudformation delete-stack --stack-name aurora-eks-amp-monitoring-eks
-aws cloudformation delete-stack --stack-name aurora-eks-amp-monitoring-network
+aws cloudformation delete-stack --stack-name ${ENV_NAME}-monitoring
+aws cloudformation delete-stack --stack-name ${ENV_NAME}-db
+aws cloudformation delete-stack --stack-name ${ENV_NAME}-eks
+aws cloudformation delete-stack --stack-name ${ENV_NAME}-network
 
 # 3. Wait for stack deletion
-aws cloudformation wait stack-delete-complete --stack-name aurora-eks-amp-monitoring-monitoring
-aws cloudformation wait stack-delete-complete --stack-name aurora-eks-amp-monitoring-db
-aws cloudformation wait stack-delete-complete --stack-name aurora-eks-amp-monitoring-eks
-aws cloudformation wait stack-delete-complete --stack-name aurora-eks-amp-monitoring-network
+aws cloudformation wait stack-delete-complete --stack-name ${ENV_NAME}-monitoring
+aws cloudformation wait stack-delete-complete --stack-name ${ENV_NAME}-db
+aws cloudformation wait stack-delete-complete --stack-name ${ENV_NAME}-eks
+aws cloudformation wait stack-delete-complete --stack-name ${ENV_NAME}-network
 ```
 
 ## Security Best Practices
