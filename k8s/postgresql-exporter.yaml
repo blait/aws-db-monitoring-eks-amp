@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgresql-exporter-secret
+  namespace: observability
+type: Opaque
+data:
+  username: ${POSTGRESQL_USER_B64}
+  password: ${POSTGRESQL_PASSWORD_B64}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql-exporter-one
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql-exporter-one
+  template:
+    metadata:
+      labels:
+        app: postgresql-exporter-one
+    spec:
+      containers:
+        - name: postgresql-exporter
+          image: wrouesnel/postgres_exporter:v0.10.1
+          ports:
+            - containerPort: 9187
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@${POSTGRESQL_ENDPOINT1}:5432/postgres?sslmode=disable"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9187
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql-exporter-two
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql-exporter-two
+  template:
+    metadata:
+      labels:
+        app: postgresql-exporter-two
+    spec:
+      containers:
+        - name: postgresql-exporter
+          image: wrouesnel/postgres_exporter:v0.10.1
+          ports:
+            - containerPort: 9187
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@${POSTGRESQL_ENDPOINT2}:5432/postgres?sslmode=disable"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9187
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql-exporter-one
+  namespace: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9187"
+spec:
+  selector:
+    app: postgresql-exporter-one
+  ports:
+    - port: 9187
+      targetPort: 9187
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql-exporter-two
+  namespace: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9187"
+spec:
+  selector:
+    app: postgresql-exporter-two
+  ports:
+    - port: 9187
+      targetPort: 9187 

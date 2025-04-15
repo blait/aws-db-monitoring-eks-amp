@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Database Stack for Aurora EKS AMP Monitoring
+  This template creates Aurora MySQL and PostgreSQL clusters.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: aurora-eks-amp-monitoring
+    Description: Environment name used for resource naming and tagging
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where Aurora clusters will be created
+
+  DatabaseSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of database subnet IDs for Aurora clusters
+
+  PrivateSubnetCidrs:
+    Type: List<String>
+    Description: List of private subnet CIDR blocks for security group rules
+
+  MySQLMasterUsername:
+    Type: String
+    Default: admin
+    Description: Master username for Aurora MySQL cluster
+
+  MySQLMasterPassword:
+    Type: String
+    Default: adminadmin
+    NoEcho: true
+    Description: Master password for Aurora MySQL cluster
+
+  PostgreSQLMasterUsername:
+    Type: String
+    Default: root
+    Description: Master username for Aurora PostgreSQL cluster
+
+  PostgreSQLMasterPassword:
+    Type: String
+    Default: rootroot
+    NoEcho: true
+    Description: Master password for Aurora PostgreSQL cluster
+
+Resources:
+  ##############################################################################
+  # Aurora MySQL
+  ##############################################################################
+  MySQLDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora MySQL cluster
+      SubnetIds: !Ref DatabaseSubnets
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-mysql-subnet-group
+
+  MySQLSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Aurora MySQL cluster
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-mysql-sg
+
+  MySQLCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      EngineVersion: 8.0.mysql_aurora.3.05.0
+      DatabaseName: aurora_mysql_db
+      MasterUsername: !Ref MySQLMasterUsername
+      MasterUserPassword: !Ref MySQLMasterPassword
+      DBSubnetGroupName: !Ref MySQLDBSubnetGroup
+      BackupRetentionPeriod: 7
+      DeletionProtection: true
+      VpcSecurityGroupIds:
+        - !Ref MySQLSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-aurora-mysql
+
+  MySQLInstance1:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-mysql
+      DBClusterIdentifier: !Ref MySQLCluster
+      DBInstanceClass: db.r5.large
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-aurora-mysql-1
+
+  MySQLInstance2:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-mysql
+      DBClusterIdentifier: !Ref MySQLCluster
+      DBInstanceClass: db.r5.large
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-aurora-mysql-2
+
+  ##############################################################################
+  # Aurora PostgreSQL
+  ##############################################################################
+  PostgreSQLDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora PostgreSQL cluster
+      SubnetIds: !Ref DatabaseSubnets
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-postgresql-subnet-group
+
+  PostgreSQLSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Aurora PostgreSQL cluster
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-postgresql-sg
+
+  PostgreSQLCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: 15.3
+      DatabaseName: aurora_postgresql_db
+      MasterUsername: !Ref PostgreSQLMasterUsername
+      MasterUserPassword: !Ref PostgreSQLMasterPassword
+      DBSubnetGroupName: !Ref PostgreSQLDBSubnetGroup
+      BackupRetentionPeriod: 7
+      DeletionProtection: true
+      VpcSecurityGroupIds:
+        - !Ref PostgreSQLSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-aurora-postgresql
+
+  PostgreSQLInstance1:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref PostgreSQLCluster
+      DBInstanceClass: db.r5.large
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-aurora-postgresql-1
+
+  PostgreSQLInstance2:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref PostgreSQLCluster
+      DBInstanceClass: db.r5.large
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-aurora-postgresql-2
+
+Outputs:
+  MySQLClusterEndpoint:
+    Description: The endpoint for the Aurora MySQL cluster
+    Value: !GetAtt MySQLCluster.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-MySQLClusterEndpoint
+
+  MySQLClusterPort:
+    Description: The port for the Aurora MySQL cluster
+    Value: 3306
+    Export:
+      Name: !Sub ${AWS::StackName}-MySQLClusterPort
+
+  MySQLInstance1Endpoint:
+    Description: The endpoint for Aurora MySQL instance 1
+    Value: !GetAtt MySQLInstance1.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-MySQLInstance1Endpoint
+
+  MySQLInstance2Endpoint:
+    Description: The endpoint for Aurora MySQL instance 2
+    Value: !GetAtt MySQLInstance2.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-MySQLInstance2Endpoint
+
+  PostgreSQLClusterEndpoint:
+    Description: The endpoint for the Aurora PostgreSQL cluster
+    Value: !GetAtt PostgreSQLCluster.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-PostgreSQLClusterEndpoint
+
+  PostgreSQLClusterPort:
+    Description: The port for the Aurora PostgreSQL cluster
+    Value: 5432
+    Export:
+      Name: !Sub ${AWS::StackName}-PostgreSQLClusterPort
+
+  PostgreSQLInstance1Endpoint:
+    Description: The endpoint for Aurora PostgreSQL instance 1
+    Value: !GetAtt PostgreSQLInstance1.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-PostgreSQLInstance1Endpoint
+
+  PostgreSQLInstance2Endpoint:
+    Description: The endpoint for Aurora PostgreSQL instance 2
+    Value: !GetAtt PostgreSQLInstance2.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-PostgreSQLInstance2Endpoint 

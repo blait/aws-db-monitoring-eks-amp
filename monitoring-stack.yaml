@@ -1,0 +1,150 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Monitoring Stack for Aurora EKS AMP Monitoring
+  This template creates Amazon Managed Service for Prometheus (AMP) workspace and related IAM roles.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: aurora-eks-amp-monitoring
+    Description: Environment name used for resource naming and tagging
+
+  EksOidcProviderUrl:
+    Type: String
+    Description: The URL of the OIDC Provider from EKS cluster (without https://)
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where monitoring components will be created
+
+  Region:
+    Type: String
+    Default: ap-northeast-2
+    Description: AWS Region where resources will be created
+
+Resources:
+  ##############################################################################
+  # Amazon Managed Service for Prometheus (AMP)
+  ##############################################################################
+  PrometheusWorkspace:
+    Type: AWS::APS::Workspace
+    Properties:
+      Alias: !Sub ${EnvironmentName}-amp
+      RetentionPeriod:
+        Days: 15
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-amp
+
+  ##############################################################################
+  # Grafana Security Group
+  ##############################################################################
+  GrafanaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Grafana
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          Description: Allow Prometheus metrics scraping
+          SourceSecurityGroupId: !Ref EksClusterSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-grafana-sg
+        - Key: kubernetes.io/cluster/${EnvironmentName}-eks
+          Value: owned
+
+  ##############################################################################
+  # IAM Roles for Service Accounts (IRSA)
+  ##############################################################################
+  GrafanaServiceAccountRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/${EksOidcProviderUrl}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub ${EksOidcProviderUrl}:sub: system:serviceaccount:observability:grafana
+                !Sub ${EksOidcProviderUrl}:aud: sts.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
+      Policies:
+        - PolicyName: AMPAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aps:QueryMetrics
+                  - aps:GetLabels
+                  - aps:GetMetricMetadata
+                  - aps:GetSeries
+                Resource: !GetAtt PrometheusWorkspace.Arn
+
+  AdotCollectorServiceAccountRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/${EksOidcProviderUrl}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub ${EksOidcProviderUrl}:sub: system:serviceaccount:observability:adot-collector
+                !Sub ${EksOidcProviderUrl}:aud: sts.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonPrometheusRemoteWriteAccess
+
+Outputs:
+  PrometheusWorkspaceId:
+    Description: The ID of the AMP workspace
+    Value: !GetAtt PrometheusWorkspace.WorkspaceId
+    Export:
+      Name: !Sub ${AWS::StackName}-WorkspaceId
+
+  PrometheusEndpoint:
+    Description: The endpoint URL for the AMP workspace
+    Value: !Sub https://aps-workspaces.${Region}.amazonaws.com/workspaces/${PrometheusWorkspace.WorkspaceId}
+    Export:
+      Name: !Sub ${AWS::StackName}-Endpoint
+
+  GrafanaSecurityGroupId:
+    Description: The ID of the Grafana security group
+    Value: !Ref GrafanaSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-GrafanaSecurityGroupId
+
+  GrafanaServiceAccountRoleArn:
+    Description: The ARN of the Grafana service account role
+    Value: !GetAtt GrafanaServiceAccountRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-GrafanaServiceAccountRoleArn
+
+  AdotCollectorServiceAccountRoleArn:
+    Description: The ARN of the ADOT Collector service account role
+    Value: !GetAtt AdotCollectorServiceAccountRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-AdotCollectorServiceAccountRoleArn 

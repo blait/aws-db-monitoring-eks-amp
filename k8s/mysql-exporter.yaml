@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-exporter-secret
+  namespace: observability
+type: Opaque
+data:
+  username: ${MYSQL_USER_B64}
+  password: ${MYSQL_PASSWORD_B64}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-exporter-one
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter-one
+  template:
+    metadata:
+      labels:
+        app: mysql-exporter-one
+    spec:
+      containers:
+        - name: mysql-exporter
+          image: prom/mysqld-exporter:v0.14.0
+          args:
+            - --collect.info_schema.tables
+            - --collect.info_schema.innodb_metrics
+            - --collect.global_status
+            - --collect.global_variables
+            - --collect.slave_status
+            - --collect.info_schema.processlist
+          ports:
+            - containerPort: 9104
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "${MYSQL_USER}:${MYSQL_PASSWORD}@(${MYSQL_ENDPOINT1}:3306)/"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-exporter-two
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter-two
+  template:
+    metadata:
+      labels:
+        app: mysql-exporter-two
+    spec:
+      containers:
+        - name: mysql-exporter
+          image: prom/mysqld-exporter:v0.14.0
+          args:
+            - --collect.info_schema.tables
+            - --collect.info_schema.innodb_metrics
+            - --collect.global_status
+            - --collect.global_variables
+            - --collect.slave_status
+            - --collect.info_schema.processlist
+          ports:
+            - containerPort: 9104
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "${MYSQL_USER}:${MYSQL_PASSWORD}@(${MYSQL_ENDPOINT2}:3306)/"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-exporter-one
+  namespace: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9104"
+spec:
+  selector:
+    app: mysql-exporter-one
+  ports:
+    - port: 9104
+      targetPort: 9104
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-exporter-two
+  namespace: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9104"
+spec:
+  selector:
+    app: mysql-exporter-two
+  ports:
+    - port: 9104
+      targetPort: 9104 

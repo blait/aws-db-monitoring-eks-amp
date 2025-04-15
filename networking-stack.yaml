@@ -1,0 +1,341 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Networking Stack for Aurora EKS AMP Monitoring
+  This template creates the foundational networking components required for an EKS cluster,
+  Aurora databases, and associated monitoring infrastructure.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: aurora-eks-amp-monitoring
+    Description: Environment name used for resource naming and tagging
+
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC (must be /16 to accommodate subnet allocation)
+
+  AvailabilityZones:
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+    Description: List of Availability Zones to use for the subnets in the VPC
+
+Resources:
+  ##############################################################################
+  # VPC
+  # The VPC is the foundational networking component that will contain all other
+  # resources. It's configured with DNS support and hostnames for EKS requirements.
+  ##############################################################################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-vpc
+        - Key: kubernetes.io/cluster/${EnvironmentName}-eks
+          Value: shared
+
+  ##############################################################################
+  # Public Subnets
+  # Public subnets are used for resources that need direct internet access
+  ##############################################################################
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !Ref AvailabilityZones]
+      CidrBlock: !Select [0, !Cidr [!GetAtt VPC.CidrBlock, 4, 0]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-1
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+        - Key: kubernetes.io/cluster/${EnvironmentName}-eks
+          Value: shared
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !Ref AvailabilityZones]
+      CidrBlock: !Select [1, !Cidr [!GetAtt VPC.CidrBlock, 4, 0]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-2
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+        - Key: kubernetes.io/cluster/${EnvironmentName}-eks
+          Value: shared
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !Ref AvailabilityZones]
+      CidrBlock: !Select [2, !Cidr [!GetAtt VPC.CidrBlock, 4, 0]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-3
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+        - Key: kubernetes.io/cluster/${EnvironmentName}-eks
+          Value: shared
+
+  ##############################################################################
+  # Private Subnets
+  # Private subnets are used for resources that don't need direct internet access
+  ##############################################################################
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !Ref AvailabilityZones]
+      CidrBlock: !Select [0, !Cidr [!GetAtt VPC.CidrBlock, 4, 4]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-1
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+        - Key: kubernetes.io/cluster/${EnvironmentName}-eks
+          Value: shared
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !Ref AvailabilityZones]
+      CidrBlock: !Select [1, !Cidr [!GetAtt VPC.CidrBlock, 4, 4]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-2
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+        - Key: kubernetes.io/cluster/${EnvironmentName}-eks
+          Value: shared
+
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !Ref AvailabilityZones]
+      CidrBlock: !Select [2, !Cidr [!GetAtt VPC.CidrBlock, 4, 4]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-3
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+        - Key: kubernetes.io/cluster/${EnvironmentName}-eks
+          Value: shared
+
+  ##############################################################################
+  # Database Subnets
+  # Isolated subnets for database instances
+  ##############################################################################
+  DatabaseSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !Ref AvailabilityZones]
+      CidrBlock: !Select [0, !Cidr [!GetAtt VPC.CidrBlock, 4, 10]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-db-1
+
+  DatabaseSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !Ref AvailabilityZones]
+      CidrBlock: !Select [1, !Cidr [!GetAtt VPC.CidrBlock, 4, 10]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-db-2
+
+  DatabaseSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !Ref AvailabilityZones]
+      CidrBlock: !Select [2, !Cidr [!GetAtt VPC.CidrBlock, 4, 10]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-db-3
+
+  ##############################################################################
+  # Internet Gateway
+  ##############################################################################
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-igw
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  ##############################################################################
+  # NAT Gateway (Single NAT Gateway for cost optimization)
+  ##############################################################################
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-eip
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-nat
+
+  ##############################################################################
+  # Route Tables
+  ##############################################################################
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-rt
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  ##############################################################################
+  # Route Table Associations
+  ##############################################################################
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet3
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet3
+      RouteTableId: !Ref PrivateRouteTable
+
+  ##############################################################################
+  # Default Network ACL
+  ##############################################################################
+  DefaultNetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-default-nacl
+
+Outputs:
+  VpcId:
+    Description: The ID of the VPC
+    Value: !Ref VPC
+    Export:
+      Name: !Sub ${AWS::StackName}-VpcId
+
+  PublicSubnets:
+    Description: List of public subnet IDs
+    Value: !Join
+      - ','
+      - - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+    Export:
+      Name: !Sub ${AWS::StackName}-PublicSubnets
+
+  PrivateSubnets:
+    Description: List of private subnet IDs
+    Value: !Join
+      - ','
+      - - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+    Export:
+      Name: !Sub ${AWS::StackName}-PrivateSubnets
+
+  DatabaseSubnets:
+    Description: List of database subnet IDs
+    Value: !Join
+      - ','
+      - - !Ref DatabaseSubnet1
+        - !Ref DatabaseSubnet2
+        - !Ref DatabaseSubnet3
+    Export:
+      Name: !Sub ${AWS::StackName}-DatabaseSubnets
+
+  PrivateSubnetCidrs:
+    Description: List of private subnet CIDR blocks
+    Value: !Join
+      - ','
+      - - !GetAtt PrivateSubnet1.CidrBlock
+        - !GetAtt PrivateSubnet2.CidrBlock
+        - !GetAtt PrivateSubnet3.CidrBlock
+    Export:
+      Name: !Sub ${AWS::StackName}-PrivateSubnetCidrs
+
+  VPCCidr:
+    Description: VPC CIDR block
+    Value: !GetAtt VPC.CidrBlock
+    Export:
+      Name: !Sub ${AWS::StackName}-VPCCidr 

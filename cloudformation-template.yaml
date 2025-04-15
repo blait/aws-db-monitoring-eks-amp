@@ -1,0 +1,515 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Infrastructure for Aurora EKS AMP Monitoring Stack'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: aurora-eks-amp-monitoring
+    Description: Environment name used for resource naming
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC
+  AuroraMySQLUser:
+    Type: String
+    Default: admin
+    Description: Aurora MySQL master username
+  AuroraMySQLPassword:
+    Type: String
+    Default: adminadmin
+    Description: Aurora MySQL master password
+  AuroraPostgreSQLUser:
+    Type: String
+    Default: root
+    Description: Aurora PostgreSQL master username
+  AuroraPostgreSQLPassword:
+    Type: String
+    Default: rootroot
+    Description: Aurora PostgreSQL master password
+
+Mappings:
+  RegionMap:
+    ap-northeast-2:
+      AMI: ami-0c9c942bd7bf113a2  # Amazon Linux 2 AMI for ap-northeast-2
+
+Resources:
+  # Amazon Managed Service for Prometheus (AMP) Workspace
+  PrometheusWorkspace:
+    Type: AWS::APS::Workspace
+    Properties:
+      Alias: !Sub ${EnvironmentName}-amp
+
+  # VPC and Networking Components
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-vpc
+
+  # Public Subnets
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Select [0, !Cidr [!GetAtt VPC.CidrBlock, 4, 0]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-1
+        - Key: kubernetes.io/role/elb
+          Value: 1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Select [1, !Cidr [!GetAtt VPC.CidrBlock, 4, 0]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-2
+        - Key: kubernetes.io/role/elb
+          Value: 1
+
+  # Private Subnets
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Select [0, !Cidr [!GetAtt VPC.CidrBlock, 4, 4]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-1
+        - Key: kubernetes.io/role/internal-elb
+          Value: 1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Select [1, !Cidr [!GetAtt VPC.CidrBlock, 4, 4]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-2
+        - Key: kubernetes.io/role/internal-elb
+          Value: 1
+
+  # Database Subnets
+  DatabaseSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Select [0, !Cidr [!GetAtt VPC.CidrBlock, 4, 10]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-db-1
+
+  DatabaseSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Select [1, !Cidr [!GetAtt VPC.CidrBlock, 4, 10]]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-db-2
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-igw
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # NAT Gateway
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-rt
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  # Subnet Route Table Associations
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Aurora MySQL Cluster
+  AuroraMySQLCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      EngineVersion: 5.7.mysql_aurora.2.11.2
+      DatabaseName: auroramysql
+      MasterUsername: !Ref AuroraMySQLUser
+      MasterUserPassword: !Ref AuroraMySQLPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+      StorageEncrypted: true
+
+  AuroraMySQLInstance1:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.r5.large
+      Engine: aurora-mysql
+      DBClusterIdentifier: !Ref AuroraMySQLCluster
+      DBInstanceIdentifier: !Sub ${EnvironmentName}-aurora-mysql-1
+
+  AuroraMySQLInstance2:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.r5.large
+      Engine: aurora-mysql
+      DBClusterIdentifier: !Ref AuroraMySQLCluster
+      DBInstanceIdentifier: !Sub ${EnvironmentName}-aurora-mysql-2
+
+  # Aurora PostgreSQL Cluster
+  AuroraPostgreSQLCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: 13.7
+      DatabaseName: aurorapostgresql
+      MasterUsername: !Ref AuroraPostgreSQLUser
+      MasterUserPassword: !Ref AuroraPostgreSQLPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+      StorageEncrypted: true
+
+  AuroraPostgreSQLInstance1:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.r5.large
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref AuroraPostgreSQLCluster
+      DBInstanceIdentifier: !Sub ${EnvironmentName}-aurora-postgresql-1
+
+  AuroraPostgreSQLInstance2:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.r5.large
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref AuroraPostgreSQLCluster
+      DBInstanceIdentifier: !Sub ${EnvironmentName}-aurora-postgresql-2
+
+  # Database Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub ${EnvironmentName} database subnet group
+      SubnetIds:
+        - !Ref DatabaseSubnet1
+        - !Ref DatabaseSubnet2
+
+  # Database Security Group
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${EnvironmentName} database security group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !GetAtt VPC.CidrBlock
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: !GetAtt VPC.CidrBlock
+
+  # EKS Cluster
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Sub ${EnvironmentName}-eks
+      Version: '1.28'
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+        SecurityGroupIds:
+          - !GetAtt EKSClusterSecurityGroup.GroupId
+        EndpointPublicAccess: true
+        EndpointPrivateAccess: true
+
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  EKSClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${EnvironmentName} EKS cluster security group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  # EKS Node Group
+  EKSNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref EKSCluster
+      NodegroupName: !Sub ${EnvironmentName}-nodegroup
+      NodeRole: !GetAtt EKSNodeRole.Arn
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      ScalingConfig:
+        MinSize: 3
+        MaxSize: 3
+        DesiredSize: 3
+      InstanceTypes:
+        - m5.xlarge
+      UpdateConfig:
+        MaxUnavailable: 1
+
+  EKSNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  # EKS Addons
+  EKSCoreDNSAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: !Ref EKSCluster
+      AddonName: coredns
+      AddonVersion: v1.10.1-eksbuild.5
+
+  EKSVPCCNIAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: !Ref EKSCluster
+      AddonName: vpc-cni
+      AddonVersion: v1.14.1-eksbuild.1
+
+  EKSKubeProxyAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: !Ref EKSCluster
+      AddonName: kube-proxy
+      AddonVersion: v1.28.1-eksbuild.1
+
+  EKSEBSCSIAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: !Ref EKSCluster
+      AddonName: aws-ebs-csi-driver
+      AddonVersion: v1.25.0-eksbuild.1
+      ServiceAccountRoleArn: !GetAtt EBSCSIRole.Arn
+
+  EBSCSIRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/${EKSCluster.OpenIdConnectProvider}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub ${EKSCluster.OpenIdConnectProvider}:sub: system:serviceaccount:kube-system:ebs-csi-controller-sa
+                !Sub ${EKSCluster.OpenIdConnectProvider}:sub: system:serviceaccount:kube-system:ebs-csi-node-sa
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
+
+  # Load Balancer Controller Role
+  LoadBalancerControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/${EKSCluster.OpenIdConnectProvider}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub ${EKSCluster.OpenIdConnectProvider}:sub: system:serviceaccount:kube-system:aws-load-balancer-controller
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy
+
+  # Grafana Security Group
+  GrafanaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${EnvironmentName} Grafana security group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 127.0.0.1/32
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+
+  # Grafana Role
+  GrafanaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/${EKSCluster.OpenIdConnectProvider}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub ${EKSCluster.OpenIdConnectProvider}:sub: system:serviceaccount:observability:grafana
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonPrometheusRemoteWriteAccess
+
+  # ADOT Collector Role
+  ADOTCollectorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/${EKSCluster.OpenIdConnectProvider}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub ${EKSCluster.OpenIdConnectProvider}:sub: system:serviceaccount:observability:adot-collector
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonPrometheusRemoteWriteAccess
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+
+  EKSClusterName:
+    Description: EKS Cluster Name
+    Value: !Ref EKSCluster
+
+  AuroraMySQLEndpoint:
+    Description: Aurora MySQL Cluster Endpoint
+    Value: !GetAtt AuroraMySQLCluster.Endpoint.Address
+
+  AuroraPostgreSQLEndpoint:
+    Description: Aurora PostgreSQL Cluster Endpoint
+    Value: !GetAtt AuroraPostgreSQLCluster.Endpoint.Address
+
+  PrometheusWorkspaceId:
+    Description: Amazon Managed Service for Prometheus Workspace ID
+    Value: !Ref PrometheusWorkspace
+
+  GrafanaSecurityGroupId:
+    Description: Grafana Security Group ID
+    Value: !Ref GrafanaSecurityGroup 

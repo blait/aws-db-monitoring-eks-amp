@@ -1,0 +1,389 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  EKS Stack for Aurora EKS AMP Monitoring
+  This template creates an EKS cluster with managed node groups and required IAM roles.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: aurora-eks-amp-monitoring
+    Description: Environment name used for resource naming and tagging
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where EKS cluster will be created
+
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of private subnet IDs for EKS nodes
+
+  NodeInstanceType:
+    Type: String
+    Default: m5.xlarge
+    Description: EC2 instance type for the EKS nodes
+
+  NodeGroupDesiredSize:
+    Type: Number
+    Default: 3
+    Description: Desired number of nodes in the EKS node group
+
+  NodeGroupMinSize:
+    Type: Number
+    Default: 3
+    Description: Minimum number of nodes in the EKS node group
+
+  NodeGroupMaxSize:
+    Type: Number
+    Default: 3
+    Description: Maximum number of nodes in the EKS node group
+
+Resources:
+  ##############################################################################
+  # EKS Cluster Role
+  ##############################################################################
+  EksClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  ##############################################################################
+  # EKS Node Role
+  ##############################################################################
+  EksNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  ##############################################################################
+  # EKS Cluster
+  ##############################################################################
+  EksCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Sub ${EnvironmentName}-eks
+      Version: "1.31"
+      RoleArn: !GetAtt EksClusterRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref EksClusterSecurityGroup
+        SubnetIds: !Ref PrivateSubnets
+        EndpointPublicAccess: true
+        EndpointPrivateAccess: true
+
+  ##############################################################################
+  # EKS Node Group
+  ##############################################################################
+  EksNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EksCluster
+    Properties:
+      ClusterName: !Ref EksCluster
+      NodeRole: !GetAtt EksNodeRole.Arn
+      ScalingConfig:
+        MinSize: !Ref NodeGroupMinSize
+        MaxSize: !Ref NodeGroupMaxSize
+        DesiredSize: !Ref NodeGroupDesiredSize
+      Subnets: !Ref PrivateSubnets
+      InstanceTypes: 
+        - !Ref NodeInstanceType
+      Labels:
+        role: worker
+      Tags:
+        Name: !Sub ${EnvironmentName}-eks-node
+
+  ##############################################################################
+  # Security Groups
+  ##############################################################################
+  EksClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EKS cluster
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref EksNodeSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-eks-cluster-sg
+        - Key: kubernetes.io/cluster/!Sub ${EnvironmentName}-eks
+          Value: owned
+
+  EksNodeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EKS nodes
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: Allow node to communicate with each other
+          FromPort: 0
+          ToPort: 65535
+          IpProtocol: '-1'
+          SourceSecurityGroupId: !Ref EksNodeSecurityGroup
+        - Description: Allow worker Kubelets and pods to receive communication from the cluster control plane
+          FromPort: 1025
+          ToPort: 65535
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref EksClusterSecurityGroup
+        - Description: Allow worker nodes to receive communication from the cluster control plane
+          FromPort: 443
+          ToPort: 443
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref EksClusterSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-eks-node-sg
+        - Key: kubernetes.io/cluster/!Sub ${EnvironmentName}-eks
+          Value: owned
+
+  ##############################################################################
+  # EBS CSI Driver Role
+  ##############################################################################
+  EbsCsiDriverRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/${EksCluster.OIDCProviderURL}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub ${EksCluster.OIDCProviderURL}:sub: system:serviceaccount:kube-system:ebs-csi-controller-sa
+                !Sub ${EksCluster.OIDCProviderURL}:aud: sts.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
+
+  ##############################################################################
+  # Load Balancer Controller Role
+  ##############################################################################
+  LoadBalancerControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/${EksCluster.OIDCProviderURL}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub ${EksCluster.OIDCProviderURL}:sub: system:serviceaccount:kube-system:aws-load-balancer-controller
+                !Sub ${EksCluster.OIDCProviderURL}:aud: sts.amazonaws.com
+      ManagedPolicyArns:
+        - !Ref LoadBalancerControllerPolicy
+
+  LoadBalancerControllerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - iam:CreateServiceLinkedRole
+              - ec2:DescribeAccountAttributes
+              - ec2:DescribeAddresses
+              - ec2:DescribeAvailabilityZones
+              - ec2:DescribeInternetGateways
+              - ec2:DescribeVpcs
+              - ec2:DescribeSubnets
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeInstances
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeTags
+              - ec2:GetCoipPoolUsage
+              - ec2:DescribeCoipPools
+              - elasticloadbalancing:DescribeLoadBalancers
+              - elasticloadbalancing:DescribeLoadBalancerAttributes
+              - elasticloadbalancing:DescribeListeners
+              - elasticloadbalancing:DescribeListenerCertificates
+              - elasticloadbalancing:DescribeSSLPolicies
+              - elasticloadbalancing:DescribeRules
+              - elasticloadbalancing:DescribeTargetGroups
+              - elasticloadbalancing:DescribeTargetGroupAttributes
+              - elasticloadbalancing:DescribeTargetHealth
+              - elasticloadbalancing:DescribeTags
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - cognito-idp:DescribeUserPoolClient
+              - acm:ListCertificates
+              - acm:DescribeCertificate
+              - iam:ListServerCertificates
+              - iam:GetServerCertificate
+              - waf-regional:GetWebACL
+              - waf-regional:GetWebACLForResource
+              - waf-regional:AssociateWebACL
+              - waf-regional:DisassociateWebACL
+              - wafv2:GetWebACL
+              - wafv2:GetWebACLForResource
+              - wafv2:AssociateWebACL
+              - wafv2:DisassociateWebACL
+              - shield:GetSubscriptionState
+              - shield:DescribeProtection
+              - shield:CreateProtection
+              - shield:DeleteProtection
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupIngress
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - ec2:CreateSecurityGroup
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - ec2:CreateTags
+            Resource: arn:aws:ec2:*:*:security-group/*
+            Condition:
+              StringEquals:
+                ec2:CreateAction: CreateSecurityGroup
+              Null:
+                aws:RequestTag/elbv2.k8s.aws/cluster: "false"
+          - Effect: Allow
+            Action:
+              - ec2:CreateTags
+              - ec2:DeleteTags
+            Resource: arn:aws:ec2:*:*:security-group/*
+            Condition:
+              Null:
+                aws:RequestTag/elbv2.k8s.aws/cluster: "true"
+                aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+          - Effect: Allow
+            Action:
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupIngress
+              - ec2:DeleteSecurityGroup
+            Resource: "*"
+            Condition:
+              Null:
+                aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:CreateLoadBalancer
+              - elasticloadbalancing:CreateTargetGroup
+            Resource: "*"
+            Condition:
+              Null:
+                aws:RequestTag/elbv2.k8s.aws/cluster: "false"
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:CreateListener
+              - elasticloadbalancing:DeleteListener
+              - elasticloadbalancing:CreateRule
+              - elasticloadbalancing:DeleteRule
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:AddTags
+              - elasticloadbalancing:RemoveTags
+            Resource:
+              - arn:aws:elasticloadbalancing:*:*:targetgroup/*/*
+              - arn:aws:elasticloadbalancing:*:*:loadbalancer/net/*/*
+              - arn:aws:elasticloadbalancing:*:*:loadbalancer/app/*/*
+            Condition:
+              Null:
+                aws:RequestTag/elbv2.k8s.aws/cluster: "true"
+                aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:AddTags
+              - elasticloadbalancing:RemoveTags
+            Resource:
+              - arn:aws:elasticloadbalancing:*:*:listener/net/*/*/*
+              - arn:aws:elasticloadbalancing:*:*:listener/app/*/*/*
+              - arn:aws:elasticloadbalancing:*:*:listener-rule/net/*/*/*
+              - arn:aws:elasticloadbalancing:*:*:listener-rule/app/*/*/*
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:ModifyLoadBalancerAttributes
+              - elasticloadbalancing:SetIpAddressType
+              - elasticloadbalancing:SetSecurityGroups
+              - elasticloadbalancing:SetSubnets
+              - elasticloadbalancing:DeleteLoadBalancer
+              - elasticloadbalancing:ModifyTargetGroup
+              - elasticloadbalancing:ModifyTargetGroupAttributes
+              - elasticloadbalancing:DeleteTargetGroup
+            Resource: "*"
+            Condition:
+              Null:
+                aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:RegisterTargets
+              - elasticloadbalancing:DeregisterTargets
+            Resource: arn:aws:elasticloadbalancing:*:*:targetgroup/*/*
+          - Effect: Allow
+            Action:
+              - elasticloadbalancing:SetWebAcl
+              - elasticloadbalancing:ModifyListener
+              - elasticloadbalancing:AddListenerCertificates
+              - elasticloadbalancing:RemoveListenerCertificates
+              - elasticloadbalancing:ModifyRule
+            Resource: "*"
+
+Outputs:
+  ClusterName:
+    Description: The name of the EKS cluster
+    Value: !Ref EksCluster
+    Export:
+      Name: !Sub ${AWS::StackName}-ClusterName
+
+  ClusterEndpoint:
+    Description: The endpoint for the EKS cluster
+    Value: !GetAtt EksCluster.Endpoint
+    Export:
+      Name: !Sub ${AWS::StackName}-ClusterEndpoint
+
+  OIDCProviderUrl:
+    Description: The URL of the OIDC Provider
+    Value: !GetAtt EksCluster.OIDCProviderURL
+    Export:
+      Name: !Sub ${AWS::StackName}-OIDCProviderUrl
+
+  EbsCsiDriverRoleArn:
+    Description: The ARN of the IAM role for EBS CSI Driver
+    Value: !GetAtt EbsCsiDriverRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-EbsCsiDriverRoleArn
+
+  LoadBalancerControllerRoleArn:
+    Description: The ARN of the IAM role for AWS Load Balancer Controller
+    Value: !GetAtt LoadBalancerControllerRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-LoadBalancerControllerRoleArn 
