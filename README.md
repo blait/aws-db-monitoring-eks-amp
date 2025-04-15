@@ -36,6 +36,12 @@ echo "AWS Region: $AWS_REGION"
 ### 1. Deploy the Networking Stack
 
 ```bash
+# Get available AZs in the region
+export AVAILABILITY_ZONES=$(aws ec2 describe-availability-zones \
+  --region $AWS_REGION \
+  --query 'AvailabilityZones[?State==`available`].ZoneName' \
+  --output text | tr '\t' ',' | sed 's/,$//')
+
 # Deploy the networking stack
 aws cloudformation create-stack \
   --stack-name ${ENV_NAME}-network \
@@ -43,7 +49,8 @@ aws cloudformation create-stack \
   --capabilities CAPABILITY_IAM \
   --parameters \
     ParameterKey=EnvironmentName,ParameterValue=${ENV_NAME} \
-    ParameterKey=VpcCidr,ParameterValue=10.0.0.0/16
+    ParameterKey=VpcCidr,ParameterValue=10.0.0.0/16 \
+    ParameterKey=AvailabilityZones,ParameterValue=$AVAILABILITY_ZONES
 
 # Wait for stack creation to complete
 aws cloudformation wait stack-create-complete \
