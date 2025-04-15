@@ -11,49 +11,43 @@ The infrastructure is split into four main components:
 3. **Database Stack**: Aurora MySQL and PostgreSQL clusters
 4. **Monitoring Stack**: AMP workspace, Grafana, and exporters
 
-## Prerequisites
+## Deployment Instructions
 
-- AWS CLI configured with appropriate credentials
-- `kubectl` installed and configured
-- `aws-iam-authenticator` installed
-- `helm` installed (version 3.x)
-- `envsubst` installed for environment variable substitution
+### Environment Setup
 
-## Deployment Steps
-
-### 0. Set Environment Variables
+Before proceeding with the deployment, set up the required environment variables:
 
 ```bash
-# Set the environment name to be used across all stacks
-export ENV_NAME=aurora-eks-amp-monitoring
+# Set environment variables
+export ENV_NAME=db-monitoring-eks-amp
 export AWS_REGION=ap-northeast-2
+export VPC_CIDR="10.0.0.0/16"
 
-# Verify the variables
+# Verify environment setup
 echo "Environment Name: $ENV_NAME"
 echo "AWS Region: $AWS_REGION"
+echo "Using VPC CIDR: $VPC_CIDR"
 ```
+
+### Prerequisites
+
+- AWS CLI configured with appropriate credentials
+- kubectl installed
+- helm installed
+- envsubst installed
+
+## Deployment Steps
 
 ### 1. Deploy the Networking Stack
 
 ```bash
-# Get available AZs in the region (limit to first 3 AZs)
-export AVAILABILITY_ZONES=$(aws ec2 describe-availability-zones \
-  --region $AWS_REGION \
-  --query 'AvailabilityZones[?State==`available`].ZoneName | [0:3]' \
-  --output text | tr '\n' ',' | sed 's/,$//')
-
-# Verify AZs
-echo "Using Availability Zones: $AVAILABILITY_ZONES"
-
-# Deploy the networking stack
 aws cloudformation create-stack \
   --stack-name ${ENV_NAME}-network \
   --template-body file://networking-stack.yaml \
-  --capabilities CAPABILITY_IAM \
   --parameters \
     ParameterKey=EnvironmentName,ParameterValue=${ENV_NAME} \
-    ParameterKey=VpcCidr,ParameterValue=10.0.0.0/16 \
-    ParameterKey=AvailabilityZones,ParameterValue=\"$AVAILABILITY_ZONES\"
+    ParameterKey=VpcCidr,ParameterValue=${VPC_CIDR} \
+  --capabilities CAPABILITY_IAM
 
 # Wait for stack creation to complete
 aws cloudformation wait stack-create-complete \
