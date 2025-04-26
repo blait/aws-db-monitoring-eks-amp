@@ -4,7 +4,7 @@ metadata:
   namespace: observability
   name: adot-collector
   annotations:
-    eks.amazonaws.com/role-arn: ${AMP_ROLE_ARN}
+    eks.amazonaws.com/role-arn: ${ADOT_ROLE_ARN}
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -212,4 +212,4 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: adot-collector 
+          name: adot-collector

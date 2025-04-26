@@ -5,8 +5,8 @@ metadata:
   namespace: observability
 type: Opaque
 data:
-  username: ${MYSQL_USER_B64}
-  password: ${MYSQL_PASSWORD_B64}
+  username: YWRtaW4=  # admin in base64
+  password: YWRtaW5hZG1pbg==  # adminadmin in base64
 
 ---
 apiVersion: apps/v1
@@ -38,7 +38,7 @@ spec:
             - containerPort: 9104
           env:
             - name: DATA_SOURCE_NAME
-              value: "${MYSQL_USER}:${MYSQL_PASSWORD}@(${MYSQL_ENDPOINT1}:3306)/"
+              value: "admin:adminadmin@(${MYSQL_ENDPOINT1}:3306)/"
           livenessProbe:
             httpGet:
               path: /metrics
@@ -76,7 +76,7 @@ spec:
             - containerPort: 9104
           env:
             - name: DATA_SOURCE_NAME
-              value: "${MYSQL_USER}:${MYSQL_PASSWORD}@(${MYSQL_ENDPOINT2}:3306)/"
+              value: "admin:adminadmin@(${MYSQL_ENDPOINT2}:3306)/"
           livenessProbe:
             httpGet:
               path: /metrics
@@ -114,4 +114,4 @@ spec:
     app: mysql-exporter-two
   ports:
     - port: 9104
-      targetPort: 9104 
+      targetPort: 9104

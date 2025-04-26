@@ -1,0 +1,42 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: ${WORKSHOP_NAME}-eks
+  region: ${AWS_REGION}
+  version: "1.31"
+
+vpc:
+  id: ${VPC_ID}
+  subnets:
+    private:
+      private-0:
+        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f1)
+      private-1:
+        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f2)
+      private-2:
+        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f3)
+
+managedNodeGroups:
+  - name: ${WORKSHOP_NAME}-ng
+    instanceType: m5.xlarge
+    desiredCapacity: 3
+    minSize: 3
+    maxSize: 5
+    privateNetworking: true
+    labels:
+      role: worker
+    tags:
+      nodegroup-role: worker
+    iam:
+      withAddonPolicies:
+        imageBuilder: true
+        autoScaler: true
+        ebs: true
+        albIngress: true
+        cloudWatch: true
+        externalDNS: true
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["*"]

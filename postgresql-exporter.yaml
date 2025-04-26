@@ -5,8 +5,8 @@ metadata:
   namespace: observability
 type: Opaque
 data:
-  username: ${POSTGRESQL_USER_B64}
-  password: ${POSTGRESQL_PASSWORD_B64}
+  username: cm9vdA==  # root in base64
+  password: cm9vdHJvb3Q=  # rootroot in base64
 
 ---
 apiVersion: apps/v1
@@ -31,7 +31,7 @@ spec:
             - containerPort: 9187
           env:
             - name: DATA_SOURCE_NAME
-              value: "postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@${POSTGRESQL_ENDPOINT1}:5432/postgres?sslmode=disable"
+              value: "postgresql://root:rootroot@${POSTGRESQL_ENDPOINT1}:5432/postgres?sslmode=disable"
           livenessProbe:
             httpGet:
               path: /metrics
@@ -62,7 +62,7 @@ spec:
             - containerPort: 9187
           env:
             - name: DATA_SOURCE_NAME
-              value: "postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@${POSTGRESQL_ENDPOINT2}:5432/postgres?sslmode=disable"
+              value: "postgresql://root:rootroot@${POSTGRESQL_ENDPOINT2}:5432/postgres?sslmode=disable"
           livenessProbe:
             httpGet:
               path: /metrics
@@ -100,4 +100,4 @@ spec:
     app: postgresql-exporter-two
   ports:
     - port: 9187
-      targetPort: 9187 
+      targetPort: 9187
