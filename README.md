@@ -109,8 +109,8 @@ aws cloudformation create-stack \
   --parameters \
     ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
     ParameterKey=VpcId,ParameterValue=$VPC_ID \
-    ParameterKey=DatabaseSubnets,ParameterValue=$DATABASE_SUBNETS \
-    ParameterKey=PrivateSubnetCidrs,ParameterValue=$PRIVATE_SUBNET_CIDRS \
+    ParameterKey=DatabaseSubnets,ParameterValue=\"$DATABASE_SUBNETS\" \
+    ParameterKey=PrivateSubnetCidrs,ParameterValue=\"$PRIVATE_SUBNET_CIDRS\" \
     ParameterKey=MySQLMasterUsername,ParameterValue=admin \
     ParameterKey=MySQLMasterPassword,ParameterValue=adminadmin \
     ParameterKey=PostgreSQLMasterUsername,ParameterValue=root \
