@@ -82,7 +82,7 @@ Resources:
     Type: AWS::RDS::DBCluster
     Properties:
       Engine: aurora-mysql
-      EngineVersion: 8.0.mysql_aurora.3.05.0
+      EngineVersion: 8.0.mysql_aurora.3.04.1
       DatabaseName: aurora_mysql_db
       MasterUsername: !Ref MySQLMasterUsername
       MasterUserPassword: !Ref MySQLMasterPassword
@@ -233,4 +233,4 @@ Outputs:
     Description: The endpoint for Aurora PostgreSQL instance 2
     Value: !GetAtt PostgreSQLInstance2.Endpoint.Address
     Export:
-      Name: !Sub ${AWS::StackName}-PostgreSQLInstance2Endpoint 
+      Name: !Sub ${AWS::StackName}-PostgreSQLInstance2Endpoint
