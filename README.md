@@ -18,11 +18,95 @@ This workshop guides you through setting up a comprehensive monitoring solution 
 Before starting this workshop, ensure you have:
 
 - An AWS account with administrator access
-- AWS CLI installed and configured with appropriate credentials
-- kubectl installed
-- helm installed
-- eksctl installed
-- A terminal or command-line interface
+- AWS CLI (version 2.0.0 or later) installed and configured with appropriate credentials
+- kubectl (version 1.23.0 or later) installed
+- helm (version 3.8.0 or later) installed
+- eksctl (version 0.123.0 or later) installed
+
+### Installation Guide
+
+#### AWS CLI
+```bash
+# macOS
+curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
+sudo installer -pkg AWSCLIV2.pkg -target /
+
+# Linux
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+# Windows
+# Download and run the installer from: https://awscli.amazonaws.com/AWSCLIV2.msi
+
+# Verify installation
+aws --version
+```
+
+#### kubectl
+```bash
+# macOS
+brew install kubectl
+# OR
+curl -LO "https://dl.k8s.io/release/v1.23.0/bin/darwin/amd64/kubectl"
+chmod +x ./kubectl
+sudo mv ./kubectl /usr/local/bin/kubectl
+
+# Linux
+curl -LO "https://dl.k8s.io/release/v1.23.0/bin/linux/amd64/kubectl"
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/kubectl
+
+# Windows
+# Download from: https://dl.k8s.io/release/v1.23.0/bin/windows/amd64/kubectl.exe
+# Add to PATH
+
+# Verify installation
+kubectl version --client
+```
+
+#### Helm
+```bash
+# macOS
+brew install helm
+# OR
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+
+# Linux
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+
+# Windows
+# Download from: https://get.helm.sh/helm-v3.8.0-windows-amd64.zip
+# Extract and add to PATH
+
+# Verify installation
+helm version
+```
+
+#### eksctl
+```bash
+# macOS
+brew tap weaveworks/tap
+brew install weaveworks/tap/eksctl
+# OR
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/download/v0.123.0/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin
+
+# Linux
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/download/v0.123.0/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin
+
+# Windows
+# Download from: https://github.com/weaveworks/eksctl/releases/download/v0.123.0/eksctl_Windows_amd64.zip
+# Extract and add to PATH
+
+# Verify installation
+eksctl version
+```
 
 ## Module 1: Environment Setup
 
