@@ -412,47 +412,98 @@ echo "ADOT Collector Role ARN: $ADOT_ROLE_ARN"
 
 ## Module 5: Amazon Managed Grafana Setup
 
-In this module, we'll set up Amazon Managed Grafana (AMG) using the AWS CLI and Console.
+In this module, we'll set up Amazon Managed Grafana (AMG) using the AWS CLI for IAM role creation and the AWS Console for workspace configuration.
 
-### Step 1: Create an AMG workspace
+### Step 1: Create an IAM Role for Grafana using CLI
 
 ```bash
-# Create AMG workspace
-aws grafana create-workspace \
-  --name ${WORKSHOP_NAME}-grafana \
-  --account-access-type CURRENT_ACCOUNT \
-  --authentication-providers AWS_SSO \
-  --permission-type SERVICE_MANAGED \
-  --data-sources AMAZON_PROMETHEUS \
-  --tags Name=${WORKSHOP_NAME}-grafana
+# Create IAM policy document for Grafana
+cat > grafana-trust-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "grafana.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
 
-# Get the workspace ID
-export AMG_WORKSPACE_ID=$(aws grafana list-workspaces \
-  --query 'workspaces[?name==`'${WORKSHOP_NAME}-grafana'`].id' \
+# Create the IAM role
+aws iam create-role \
+  --role-name ${WORKSHOP_NAME}-grafana-role \
+  --assume-role-policy-document file://grafana-trust-policy.json
+
+# Attach necessary policies to the role
+aws iam attach-role-policy \
+  --role-name ${WORKSHOP_NAME}-grafana-role \
+  --policy-arn arn:aws:iam::aws:policy/AmazonPrometheusFullAccess
+
+# Get the role ARN
+export GRAFANA_ROLE_ARN=$(aws iam get-role \
+  --role-name ${WORKSHOP_NAME}-grafana-role \
+  --query 'Role.Arn' \
   --output text)
 
-echo "AMG Workspace ID: $AMG_WORKSPACE_ID"
+echo "Grafana Role ARN: $GRAFANA_ROLE_ARN"
 ```
 
-### Step 2: Configure AMG workspace (AWS Console)
+### Step 2: Create an AMG workspace
 
 1. Open the AWS Console and navigate to Amazon Managed Grafana
-2. Select the workspace you just created
-3. Click on "Authentication" in the left sidebar
-4. Under "AWS IAM Identity Center (successor to AWS SSO)", click "Configure user access"
-5. Add yourself as an Admin user
-6. Click "Save changes"
+2. Click "Create workspace"
+3. Enter a workspace name: `${WORKSHOP_NAME}-grafana` (e.g., "db-monitoring-workshop-grafana")
+4. Under "Access method", select "AWS IAM Identity Center (successor to AWS SSO)"
+5. Under "Permission type", select "Service managed"
+6. Under "Service role", select "Use an existing service role"
+7. Select the role you created in Step 1 from the dropdown
+8. Under "Data sources", select "Amazon Managed Service for Prometheus"
+9. Review your settings and click "Create workspace"
+10. Wait for the workspace to be created (this may take a few minutes)
 
-### Step 3: Configure AMP as a data source in AMG (AWS Console)
+### Step 3: Configure AMG workspace authentication
 
-1. In the AMG workspace, click on "Data sources" in the left sidebar
-2. Click "Add data source"
-3. Select "Amazon Managed Service for Prometheus"
-4. Configure the data source:
+1. Once the workspace is created, click on the workspace name to view its details
+2. Click on "Authentication" in the left sidebar
+3. Under "AWS IAM Identity Center (successor to AWS SSO)", click "Configure user access"
+4. Add yourself as an Admin user:
+   - Click "Assign new user or group"
+   - Search for your username
+   - Select your username and click "Assign users and groups"
+   - Set the permission level to "Admin"
+5. Click "Save changes"
+
+### Step 4: Configure AMP as a data source in AMG
+
+1. In the AMG workspace details page, click on the "Grafana workspace URL" to open the Grafana UI
+2. Log in with your AWS SSO credentials
+3. In Grafana, click on "Configuration" (gear icon) in the left sidebar
+4. Select "Data sources"
+5. Click "Add data source"
+6. Select "Amazon Managed Service for Prometheus"
+7. Configure the data source:
    - Name: AMP
-   - Workspace: Select your AMP workspace
+   - Workspace: Select your AMP workspace (created in Module 4)
    - Region: Select your AWS region
-5. Click "Save & test"
+8. Click "Save & test"
+9. You should see a "Data source is working" message
+
+### Step 5: Store the AMG workspace ID as an environment variable
+
+For use in later modules, store the AMG workspace ID as an environment variable:
+
+```bash
+# Get the workspace ID from the AWS Console and set it as an environment variable
+# The workspace ID is visible in the URL when viewing the workspace details
+# For example: https://console.aws.amazon.com/grafana/home?region=us-east-1#/workspaces/g-1234567890
+# In this case, the workspace ID is g-1234567890
+export AMG_WORKSPACE_ID=<your-workspace-id>
+echo "AMG Workspace ID: $AMG_WORKSPACE_ID"
+```
 
 ## Module 6: ADOT Collector and Database Exporters
 
