@@ -11,11 +11,11 @@ vpc:
   subnets:
     private:
       private-0:
-        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f1)
+        id: ${PRIVATE_SUBNET_1}
       private-1:
-        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f2)
+        id: ${PRIVATE_SUBNET_2}
       private-2:
-        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f3)
+        id: ${PRIVATE_SUBNET_3}
 
 managedNodeGroups:
   - name: ${WORKSHOP_NAME}-ng

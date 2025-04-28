@@ -245,6 +245,20 @@ In this module, we'll set up an Amazon EKS cluster using eksctl and the AWS CLI.
 
 ### Step 1: Create an EKS cluster using eksctl
 
+First, extract the subnet IDs into separate environment variables:
+
+```bash
+# Extract individual subnet IDs from the comma-separated list
+export PRIVATE_SUBNET_1=$(echo $PRIVATE_SUBNETS | cut -d',' -f1)
+export PRIVATE_SUBNET_2=$(echo $PRIVATE_SUBNETS | cut -d',' -f2)
+export PRIVATE_SUBNET_3=$(echo $PRIVATE_SUBNETS | cut -d',' -f3)
+
+# Verify the subnet IDs
+echo "Private Subnet 1: $PRIVATE_SUBNET_1"
+echo "Private Subnet 2: $PRIVATE_SUBNET_2"
+echo "Private Subnet 3: $PRIVATE_SUBNET_3"
+```
+
 Create a file named `eks-cluster.yaml` with the following content:
 
 ```yaml
@@ -261,11 +275,11 @@ vpc:
   subnets:
     private:
       private-0:
-        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f1)
+        id: ${PRIVATE_SUBNET_1}
       private-1:
-        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f2)
+        id: ${PRIVATE_SUBNET_2}
       private-2:
-        id: $(echo $PRIVATE_SUBNETS | cut -d',' -f3)
+        id: ${PRIVATE_SUBNET_3}
 
 managedNodeGroups:
   - name: ${WORKSHOP_NAME}-ng
@@ -1109,6 +1123,105 @@ aws cloudformation wait stack-delete-complete --stack-name ${WORKSHOP_NAME}-db
 aws cloudformation delete-stack --stack-name ${WORKSHOP_NAME}-network
 aws cloudformation wait stack-delete-complete --stack-name ${WORKSHOP_NAME}-network
 ```
+
+## Understanding the Observability Architecture
+
+This section explains how the different components of our observability stack work together to provide comprehensive monitoring for Aurora databases.
+
+### Architecture Overview
+
+The observability architecture consists of several key components that work together:
+
+1. **Amazon EKS (Elastic Kubernetes Service)** - The foundation infrastructure
+2. **AWS Distro for OpenTelemetry (ADOT)** - The collector and processor
+3. **Amazon Managed Service for Prometheus (AMP)** - The metrics storage backend
+4. **Amazon Managed Grafana (AMG)** - The visualization and alerting frontend
+5. **Database Exporters** - The metrics collectors for Aurora databases
+
+Here's how data flows through the system:
+
+```
+Aurora Databases → Database Exporters → ADOT Collector → Amazon Managed Prometheus → Amazon Managed Grafana
+```
+
+### Component Roles and Locations
+
+#### Amazon EKS
+- **Location**: AWS Cloud (managed by AWS)
+- **Role**: 
+  - Provides the Kubernetes infrastructure where monitoring components run
+  - Manages the compute resources, networking, and security
+  - Hosts the ADOT Collector and database exporters
+  - Enables scalable, containerized deployment of monitoring components
+
+#### AWS Distro for OpenTelemetry (ADOT)
+- **Location**: Runs as pods within the EKS cluster in the `observability` namespace
+- **Role**:
+  - Collects metrics from various sources within the Kubernetes cluster
+  - Scrapes metrics from database exporters using Prometheus receiver
+  - Processes and transforms metrics as needed
+  - Forwards metrics to Amazon Managed Prometheus using AWS Sigv4 authentication
+  - Acts as the central collection point for all observability data
+
+#### Amazon Managed Service for Prometheus (AMP)
+- **Location**: Fully managed AWS service (outside the EKS cluster)
+- **Role**:
+  - Stores all metrics data in a scalable, highly available time-series database
+  - Provides PromQL query capabilities for metrics analysis
+  - Handles long-term storage and retention of metrics
+  - Eliminates the need to manage Prometheus servers yourself
+
+#### Amazon Managed Grafana (AMG)
+- **Location**: Fully managed AWS service (outside the EKS cluster)
+- **Role**:
+  - Provides visualization dashboards for metrics
+  - Connects to AMP as a data source
+  - Enables creation of custom dashboards and panels
+  - Implements alerting based on metric thresholds
+  - Offers a user-friendly interface for monitoring and analysis
+
+#### Database Exporters
+- **Location**: Run as pods within the EKS cluster in the `observability` namespace
+- **Role**:
+  - Connect to Aurora MySQL and PostgreSQL databases
+  - Extract performance metrics and statistics
+  - Convert database metrics into Prometheus format
+  - Expose metrics endpoints for ADOT to scrape
+  - Provide specialized metrics collection for each database type
+
+### How It All Works Together
+
+1. **Metrics Collection**:
+   - Database exporters connect to Aurora databases and collect metrics
+   - Exporters expose these metrics on HTTP endpoints in Prometheus format
+   - ADOT Collector discovers these endpoints through Kubernetes service discovery
+   - ADOT scrapes metrics from the exporters at regular intervals (30s by default)
+
+2. **Metrics Processing and Storage**:
+   - ADOT processes the collected metrics (adding metadata, filtering, etc.)
+   - ADOT authenticates with AMP using AWS IAM roles and SigV4 signing
+   - ADOT forwards metrics to AMP using Prometheus remote write protocol
+   - AMP stores the metrics in a scalable, highly available time-series database
+
+3. **Visualization and Alerting**:
+   - AMG connects to AMP as a data source using AWS IAM authentication
+   - Users create dashboards in AMG to visualize metrics from AMP
+   - AMG executes PromQL queries against AMP to retrieve metrics
+   - Alerts are configured in AMG based on metric thresholds
+   - When alert conditions are met, notifications are sent via configured channels
+
+4. **Security and IAM Integration**:
+   - EKS OIDC provider enables IAM roles for service accounts
+   - ADOT uses IAM roles to authenticate with AMP
+   - AMG uses IAM/SSO for user authentication and authorization
+   - All communication between components uses TLS encryption
+
+This architecture provides several benefits:
+- **Fully managed services** reduce operational overhead
+- **Scalability** to handle growing metrics volume
+- **High availability** with AWS managed services
+- **Security** through IAM integration and encryption
+- **Comprehensive monitoring** of Aurora databases with specialized exporters
 
 ## Conclusion
 
