@@ -441,9 +441,19 @@ aws iam create-role \
   --assume-role-policy-document file://grafana-trust-policy.json
 
 # Attach necessary policies to the role
+# For Prometheus metrics access
 aws iam attach-role-policy \
   --role-name ${WORKSHOP_NAME}-grafana-role \
   --policy-arn arn:aws:iam::aws:policy/AmazonPrometheusFullAccess
+
+# For CloudWatch metrics access (needed for Aurora CPU and Network metrics)
+aws iam attach-role-policy \
+  --role-name ${WORKSHOP_NAME}-grafana-role \
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
+
+# Verify the attached policies
+aws iam list-attached-role-policies \
+  --role-name ${WORKSHOP_NAME}-grafana-role
 
 # Get the role ARN
 export GRAFANA_ROLE_ARN=$(aws iam get-role \
@@ -981,6 +991,46 @@ spec:
 ### Step 5: Deploy database exporters
 
 ```bash
+# Verify that database endpoint environment variables are set correctly
+echo "MySQL Endpoint 1: $MYSQL_ENDPOINT1"
+echo "MySQL Endpoint 2: $MYSQL_ENDPOINT2"
+echo "PostgreSQL Endpoint 1: $POSTGRESQL_ENDPOINT1"
+echo "PostgreSQL Endpoint 2: $POSTGRESQL_ENDPOINT2"
+
+# If any of the endpoints are empty or show the variable name instead of the actual endpoint,
+# re-export them using the CloudFormation outputs:
+if [[ -z "$MYSQL_ENDPOINT1" || "$MYSQL_ENDPOINT1" == *"\$"* ]]; then
+  export MYSQL_ENDPOINT1=$(aws cloudformation describe-stacks \
+    --stack-name ${WORKSHOP_NAME}-db \
+    --query 'Stacks[0].Outputs[?OutputKey==`MySQLInstance1Endpoint`].OutputValue' \
+    --output text)
+  echo "Re-exported MySQL Endpoint 1: $MYSQL_ENDPOINT1"
+fi
+
+if [[ -z "$MYSQL_ENDPOINT2" || "$MYSQL_ENDPOINT2" == *"\$"* ]]; then
+  export MYSQL_ENDPOINT2=$(aws cloudformation describe-stacks \
+    --stack-name ${WORKSHOP_NAME}-db \
+    --query 'Stacks[0].Outputs[?OutputKey==`MySQLInstance2Endpoint`].OutputValue' \
+    --output text)
+  echo "Re-exported MySQL Endpoint 2: $MYSQL_ENDPOINT2"
+fi
+
+if [[ -z "$POSTGRESQL_ENDPOINT1" || "$POSTGRESQL_ENDPOINT1" == *"\$"* ]]; then
+  export POSTGRESQL_ENDPOINT1=$(aws cloudformation describe-stacks \
+    --stack-name ${WORKSHOP_NAME}-db \
+    --query 'Stacks[0].Outputs[?OutputKey==`PostgreSQLInstance1Endpoint`].OutputValue' \
+    --output text)
+  echo "Re-exported PostgreSQL Endpoint 1: $POSTGRESQL_ENDPOINT1"
+fi
+
+if [[ -z "$POSTGRESQL_ENDPOINT2" || "$POSTGRESQL_ENDPOINT2" == *"\$"* ]]; then
+  export POSTGRESQL_ENDPOINT2=$(aws cloudformation describe-stacks \
+    --stack-name ${WORKSHOP_NAME}-db \
+    --query 'Stacks[0].Outputs[?OutputKey==`PostgreSQLInstance2Endpoint`].OutputValue' \
+    --output text)
+  echo "Re-exported PostgreSQL Endpoint 2: $POSTGRESQL_ENDPOINT2"
+fi
+
 # Deploy MySQL exporters
 envsubst < mysql-exporter.yaml | kubectl apply -f -
 
@@ -992,6 +1042,13 @@ kubectl get pods -n observability -l app=mysql-exporter-one
 kubectl get pods -n observability -l app=mysql-exporter-two
 kubectl get pods -n observability -l app=postgresql-exporter-one
 kubectl get pods -n observability -l app=postgresql-exporter-two
+
+# Verify the exporters can connect to the databases (wait a moment for pods to start)
+sleep 10
+echo "Checking MySQL exporter logs:"
+kubectl logs -n observability -l app=mysql-exporter-one --tail=5
+echo "Checking PostgreSQL exporter logs:"
+kubectl logs -n observability -l app=postgresql-exporter-one --tail=5
 ```
 
 ## Module 7: Dashboard and Alerting Configuration
@@ -1025,7 +1082,19 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
    - Set the PostgreSQL instance variable to match your Aurora PostgreSQL instances (e.g., `postgresql-exporter-one.observability.svc.cluster.local:9187`)
    - Adjust time ranges as needed
 
-### Step 4: Create a Custom Dashboard for Key Database Metrics
+### Step 4: Import MySQL Dashboard
+
+1. In Grafana, click on the "+" icon in the left sidebar and select "Import"
+2. Click "Upload JSON file" or paste the dashboard JSON
+3. Select "AMP" as the data source
+4. Click "Import"
+5. Customize the dashboard:
+   - Set the MySQL instance variable to match your Aurora MySQL instances (e.g., `mysql-exporter-one` or `mysql-exporter-two`)
+   - Adjust time ranges as needed
+
+### Step 5: Create a Custom Dashboard for Key Database Metrics
+
+If you prefer to create your own custom dashboard instead of importing an existing one:
 
 1. Click on the "+" icon in the left sidebar and select "Dashboard"
 2. Click "Add new panel"
@@ -1034,7 +1103,7 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
 
 3. Create a panel for MySQL Connections:
    - Select "AMP" as the data source
-   - Enter PromQL query: `mysql_global_status_threads_connected{job="mysql-exporters"}`
+   - Enter PromQL query: `mysql_global_status_threads_connected{app_kubernetes_io_instance=~"mysql-exporter-one|mysql-exporter-two"}`
    - Set visualization type: "Stat" or "Time series"
    - Set panel title: "MySQL Active Connections"
    - Click "Apply"
@@ -1042,7 +1111,7 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
 4. Create a panel for MySQL Query Rate:
    - Click "Add panel"
    - Select "AMP" as the data source
-   - Enter PromQL query: `rate(mysql_global_status_questions{job="mysql-exporters"}[5m])`
+   - Enter PromQL query: `rate(mysql_global_status_questions{app_kubernetes_io_instance=~"mysql-exporter-one|mysql-exporter-two"}[5m])`
    - Set visualization type: "Time series"
    - Set panel title: "MySQL Query Rate (5m avg)"
    - Click "Apply"
@@ -1050,7 +1119,7 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
 5. Create a panel for MySQL Buffer Pool Usage:
    - Click "Add panel"
    - Select "AMP" as the data source
-   - Enter PromQL query: `mysql_global_status_innodb_buffer_pool_pages_free{job="mysql-exporters"} / mysql_global_status_innodb_buffer_pool_pages_total{job="mysql-exporters"} * 100`
+   - Enter PromQL query: `mysql_global_status_innodb_buffer_pool_pages_free{app_kubernetes_io_instance=~"mysql-exporter-one|mysql-exporter-two"} / mysql_global_status_innodb_buffer_pool_pages_total{app_kubernetes_io_instance=~"mysql-exporter-one|mysql-exporter-two"} * 100`
    - Set visualization type: "Gauge"
    - Set panel title: "MySQL Buffer Pool Free (%)"
    - Set thresholds: 20 (red), 40 (yellow), 60 (green)
@@ -1061,7 +1130,7 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
 6. Create a panel for PostgreSQL Connections:
    - Click "Add panel"
    - Select "AMP" as the data source
-   - Enter PromQL query: `pg_stat_activity_count{job="postgresql-exporters"}`
+   - Enter PromQL query: `pg_stat_activity_count{app_kubernetes_io_instance=~"postgresql-exporter-one|postgresql-exporter-two"}`
    - Set visualization type: "Stat" or "Time series"
    - Set panel title: "PostgreSQL Active Connections"
    - Click "Apply"
@@ -1069,7 +1138,7 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
 7. Create a panel for PostgreSQL Transaction Rate:
    - Click "Add panel"
    - Select "AMP" as the data source
-   - Enter PromQL query: `rate(pg_stat_database_xact_commit{job="postgresql-exporters"}[5m]) + rate(pg_stat_database_xact_rollback{job="postgresql-exporters"}[5m])`
+   - Enter PromQL query: `rate(pg_stat_database_xact_commit{app_kubernetes_io_instance=~"postgresql-exporter-one|postgresql-exporter-two"}[5m]) + rate(pg_stat_database_xact_rollback{app_kubernetes_io_instance=~"postgresql-exporter-one|postgresql-exporter-two"}[5m])`
    - Set visualization type: "Time series"
    - Set panel title: "PostgreSQL Transaction Rate (5m avg)"
    - Click "Apply"
@@ -1077,7 +1146,7 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
 8. Create a panel for PostgreSQL Cache Hit Ratio:
    - Click "Add panel"
    - Select "AMP" as the data source
-   - Enter PromQL query: `pg_stat_database_blks_hit{job="postgresql-exporters"} / (pg_stat_database_blks_hit{job="postgresql-exporters"} + pg_stat_database_blks_read{job="postgresql-exporters"}) * 100`
+   - Enter PromQL query: `pg_stat_database_blks_hit{app_kubernetes_io_instance=~"postgresql-exporter-one|postgresql-exporter-two"} / (pg_stat_database_blks_hit{app_kubernetes_io_instance=~"postgresql-exporter-one|postgresql-exporter-two"} + pg_stat_database_blks_read{app_kubernetes_io_instance=~"postgresql-exporter-one|postgresql-exporter-two"}) * 100`
    - Set visualization type: "Gauge"
    - Set panel title: "PostgreSQL Cache Hit Ratio (%)"
    - Set thresholds: 80 (red), 90 (yellow), 95 (green)
