@@ -4,13 +4,13 @@
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER}"
+        "Federated": "arn:aws:iam::062955843804:oidc-provider/oidc.eks.ap-northeast-2.amazonaws.com/id/A9332025DD453EC7BE5F16076E004905"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "${OIDC_PROVIDER}:sub": "system:serviceaccount:observability:adot-collector",
-          "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
+          "oidc.eks.ap-northeast-2.amazonaws.com/id/A9332025DD453EC7BE5F16076E004905:sub": "system:serviceaccount:observability:adot-collector",
+          "oidc.eks.ap-northeast-2.amazonaws.com/id/A9332025DD453EC7BE5F16076E004905:aud": "sts.amazonaws.com"
         }
       }
     }

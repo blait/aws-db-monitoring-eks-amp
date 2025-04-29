@@ -362,8 +362,10 @@ export AMP_WORKSPACE_ID=$(aws amp list-workspaces \
 echo "AMP Workspace ID: $AMP_WORKSPACE_ID"
 
 # Get the AMP endpoint
-export AMP_ENDPOINT="https://aps-workspaces.${AWS_REGION}.amazonaws.com/workspaces/${AMP_WORKSPACE_ID}"
+# Note: The correct endpoint format is crucial for the ADOT collector to work properly. If the endpoint doesn't work, find the "remote write URL" endpoint in the AWS Console (AMP)
+export AMP_ENDPOINT="https://aps-workspaces.${AWS_REGION}.amazonaws.com/workspaces/${AMP_WORKSPACE_ID}/api/v1/remote_write"
 echo "AMP Endpoint: $AMP_ENDPOINT"
+
 ```
 
 ### Step 2: Create IAM role for ADOT Collector
