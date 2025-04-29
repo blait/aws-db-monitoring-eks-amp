@@ -149,6 +149,24 @@ data:
               - __meta_kubernetes_service_name
               target_label: kubernetes_name
 
+          - job_name: mysql-exporters
+            static_configs:
+            - targets:
+              - mysql-exporter-one.observability.svc.cluster.local:9104
+              - mysql-exporter-two.observability.svc.cluster.local:9104
+              labels:
+                job: mysql-exporters
+                kubernetes_namespace: observability
+
+          - job_name: postgresql-exporters
+            static_configs:
+            - targets:
+              - postgresql-exporter-one.observability.svc.cluster.local:9187
+              - postgresql-exporter-two.observability.svc.cluster.local:9187
+              labels:
+                job: postgresql-exporters
+                kubernetes_namespace: observability
+
     exporters:
       prometheusremotewrite:
         endpoint: ${AMP_ENDPOINT}

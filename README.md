@@ -1012,7 +1012,7 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
 3. Select "AMP" as the data source
 4. Click "Import"
 5. Customize the dashboard:
-   - Set the MySQL instance variable to match your Aurora MySQL instances
+   - Set the MySQL instance variable to match your Aurora MySQL instances (e.g., `mysql-exporter-one.observability.svc.cluster.local:9104`)
    - Adjust time ranges as needed
 
 ### Step 3: Import PostgreSQL Dashboard
@@ -1022,21 +1022,84 @@ In this module, we'll configure dashboards and alerts in Amazon Managed Grafana.
 3. Select "AMP" as the data source
 4. Click "Import"
 5. Customize the dashboard:
-   - Set the PostgreSQL instance variable to match your Aurora PostgreSQL instances
+   - Set the PostgreSQL instance variable to match your Aurora PostgreSQL instances (e.g., `postgresql-exporter-one.observability.svc.cluster.local:9187`)
    - Adjust time ranges as needed
 
-### Step 4: Create a Custom Dashboard
+### Step 4: Create a Custom Dashboard for Key Database Metrics
 
 1. Click on the "+" icon in the left sidebar and select "Dashboard"
 2. Click "Add new panel"
-3. Configure the panel:
+
+#### For MySQL Key Metrics:
+
+3. Create a panel for MySQL Connections:
    - Select "AMP" as the data source
-   - Enter a PromQL query (e.g., `rate(mysql_global_status_questions[5m])` for MySQL query rate)
-   - Set visualization type (e.g., Time series)
-   - Configure panel options (title, description, etc.)
-4. Click "Apply"
-5. Add more panels as needed
-6. Save the dashboard with a descriptive name
+   - Enter PromQL query: `mysql_global_status_threads_connected{job="mysql-exporters"}`
+   - Set visualization type: "Stat" or "Time series"
+   - Set panel title: "MySQL Active Connections"
+   - Click "Apply"
+
+4. Create a panel for MySQL Query Rate:
+   - Click "Add panel"
+   - Select "AMP" as the data source
+   - Enter PromQL query: `rate(mysql_global_status_questions{job="mysql-exporters"}[5m])`
+   - Set visualization type: "Time series"
+   - Set panel title: "MySQL Query Rate (5m avg)"
+   - Click "Apply"
+
+5. Create a panel for MySQL Buffer Pool Usage:
+   - Click "Add panel"
+   - Select "AMP" as the data source
+   - Enter PromQL query: `mysql_global_status_innodb_buffer_pool_pages_free{job="mysql-exporters"} / mysql_global_status_innodb_buffer_pool_pages_total{job="mysql-exporters"} * 100`
+   - Set visualization type: "Gauge"
+   - Set panel title: "MySQL Buffer Pool Free (%)"
+   - Set thresholds: 20 (red), 40 (yellow), 60 (green)
+   - Click "Apply"
+
+#### For PostgreSQL Key Metrics:
+
+6. Create a panel for PostgreSQL Connections:
+   - Click "Add panel"
+   - Select "AMP" as the data source
+   - Enter PromQL query: `pg_stat_activity_count{job="postgresql-exporters"}`
+   - Set visualization type: "Stat" or "Time series"
+   - Set panel title: "PostgreSQL Active Connections"
+   - Click "Apply"
+
+7. Create a panel for PostgreSQL Transaction Rate:
+   - Click "Add panel"
+   - Select "AMP" as the data source
+   - Enter PromQL query: `rate(pg_stat_database_xact_commit{job="postgresql-exporters"}[5m]) + rate(pg_stat_database_xact_rollback{job="postgresql-exporters"}[5m])`
+   - Set visualization type: "Time series"
+   - Set panel title: "PostgreSQL Transaction Rate (5m avg)"
+   - Click "Apply"
+
+8. Create a panel for PostgreSQL Cache Hit Ratio:
+   - Click "Add panel"
+   - Select "AMP" as the data source
+   - Enter PromQL query: `pg_stat_database_blks_hit{job="postgresql-exporters"} / (pg_stat_database_blks_hit{job="postgresql-exporters"} + pg_stat_database_blks_read{job="postgresql-exporters"}) * 100`
+   - Set visualization type: "Gauge"
+   - Set panel title: "PostgreSQL Cache Hit Ratio (%)"
+   - Set thresholds: 80 (red), 90 (yellow), 95 (green)
+   - Click "Apply"
+
+9. Organize your panels into rows:
+   - Click "Add panel" then "Add a new row"
+   - Name the row "MySQL Metrics"
+   - Drag MySQL panels under this row
+   - Repeat for PostgreSQL metrics
+
+10. Add a dashboard description:
+    - Click the gear icon in the top right
+    - Add a description explaining the dashboard purpose and metrics
+    - Set appropriate refresh interval (e.g., 30s or 1m)
+
+11. Save the dashboard with a descriptive name like "Aurora Database Overview"
+
+### Step 5: Create Alert Rules for Critical Metrics
+
+1. Navigate to the "Alerting" section in the left sidebar
+2. Click "Create alert rule"
 
 ### Step 5: Set Up Alerting
 
