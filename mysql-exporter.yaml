@@ -14,15 +14,19 @@ kind: Deployment
 metadata:
   name: mysql-exporter-one
   namespace: observability
+  labels:
+    app.kubernetes.io/instance: mysql-exporter-one
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: mysql-exporter-one
+      app.kubernetes.io/instance: mysql-exporter-one
   template:
     metadata:
       labels:
         app: mysql-exporter-one
+        app.kubernetes.io/instance: mysql-exporter-one
     spec:
       containers:
         - name: mysql-exporter
@@ -52,15 +56,19 @@ kind: Deployment
 metadata:
   name: mysql-exporter-two
   namespace: observability
+  labels:
+    app.kubernetes.io/instance: mysql-exporter-two
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: mysql-exporter-two
+      app.kubernetes.io/instance: mysql-exporter-two
   template:
     metadata:
       labels:
         app: mysql-exporter-two
+        app.kubernetes.io/instance: mysql-exporter-two
     spec:
       containers:
         - name: mysql-exporter
@@ -90,12 +98,15 @@ kind: Service
 metadata:
   name: mysql-exporter-one
   namespace: observability
+  labels:
+    app.kubernetes.io/instance: mysql-exporter-one
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9104"
 spec:
   selector:
     app: mysql-exporter-one
+    app.kubernetes.io/instance: mysql-exporter-one
   ports:
     - port: 9104
       targetPort: 9104
@@ -106,12 +117,15 @@ kind: Service
 metadata:
   name: mysql-exporter-two
   namespace: observability
+  labels:
+    app.kubernetes.io/instance: mysql-exporter-two
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9104"
 spec:
   selector:
     app: mysql-exporter-two
+    app.kubernetes.io/instance: mysql-exporter-two
   ports:
     - port: 9104
       targetPort: 9104
