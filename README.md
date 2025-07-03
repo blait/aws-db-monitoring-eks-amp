@@ -1,4 +1,4 @@
-# AWS Workshop: Integrated Database Monitoring with EKS, AMP, and AMG (Helm Edition)
+# AWS Workshop: Integrated Database Monitoring with EKS, AMP, and AMG
 
 This workshop guides you through setting up a comprehensive monitoring solution for Aurora databases using Amazon EKS, Amazon Managed Service for Prometheus (AMP), and Amazon Managed Grafana (AMG).
 
@@ -534,25 +534,3 @@ aws iam detach-role-policy \
   --policy-arn arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
 aws iam delete-role --role-name ${WORKSHOP_NAME}-grafana-role
 ```
-
-## Summary of Improvements
-
-### ✅ Industry Best Practices
-- **Helm Charts**: Standard Kubernetes package management
-- **Environment-specific configurations**: Proper dev/staging/prod separation
-- **Automated deployment**: Reduced human error and deployment time
-- **Version control**: Track and rollback monitoring configuration changes
-
-### ✅ Enhanced Monitoring
-- **PostgreSQL Dashboard**: Complete monitoring coverage for PostgreSQL
-- **Optimized EKS version**: Better compatibility with ADOT Collector
-- **Comprehensive metrics**: Following AWS monitoring best practices
-- **Professional dashboards**: Production-ready visualizations
-
-### ✅ Operational Excellence
-- **Atomic deployments**: All-or-nothing deployment strategy
-- **Easy rollbacks**: Instant recovery from failed deployments
-- **Validation scripts**: Pre-deployment checks and post-deployment verification
-- **Clear documentation**: Step-by-step instructions with troubleshooting
-
-This Helm-based approach transforms the workshop from a learning exercise into a production-ready monitoring solution that follows industry standards and AWS best practices.
