@@ -32,18 +32,12 @@ adot-collector:
     endpoint: ""
     region: us-east-1
 
-# MySQL Exporter configuration - values passed to subchart
+# MySQL Exporter configuration - monitor primary instance (represents cluster)
 mysql-exporter:
   enabled: true
   instances:
-    - name: mysql-instance-1
-      endpoint: ""
-      port: 3306
-      username: admin
-      password: adminadmin
-      enabled: true
-    - name: mysql-instance-2
-      endpoint: ""
+    - name: mysql-cluster
+      endpoint: ""  # Will be set to primary MySQL endpoint (instance-1)
       port: 3306
       username: admin
       password: adminadmin
@@ -56,20 +50,12 @@ mysql-exporter:
       cpu: 500m
       memory: 512Mi
 
-# PostgreSQL Exporter configuration - values passed to subchart
+# PostgreSQL Exporter configuration - monitor primary instance (represents cluster)
 postgresql-exporter:
   enabled: true
   instances:
-    - name: postgresql-instance-1
-      endpoint: ""
-      port: 5432
-      username: root
-      password: rootroot
-      database: postgres
-      sslmode: disable
-      enabled: true
-    - name: postgresql-instance-2
-      endpoint: ""
+    - name: postgresql-cluster
+      endpoint: ""  # Will be set to primary PostgreSQL endpoint (instance-1)
       port: 5432
       username: root
       password: rootroot

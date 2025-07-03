@@ -117,12 +117,10 @@ deploy_monitoring() {
         # Replace ALL empty endpoint fields with AMP endpoint first
         sed -i '' "s|endpoint: \"\"|endpoint: \"${AMP_ENDPOINT}\"|g" "$values_file"
         
-        # Then fix the database endpoints by replacing the AMP endpoint back to correct values
+        # Then fix the database endpoints - use primary instances for cluster monitoring
         sed -i '' \
-            -e "/mysql-instance-1/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
-            -e "/mysql-instance-2/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT2}\"|" \
-            -e "/postgresql-instance-1/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
-            -e "/postgresql-instance-2/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT2}\"|" \
+            -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
+            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
             "$values_file"
     else
         # Linux sed syntax - use simpler patterns
@@ -136,12 +134,10 @@ deploy_monitoring() {
         # Replace ALL empty endpoint fields with AMP endpoint first
         sed -i "s|endpoint: \"\"|endpoint: \"${AMP_ENDPOINT}\"|g" "$values_file"
         
-        # Then fix the database endpoints by replacing the AMP endpoint back to correct values
+        # Then fix the database endpoints - use primary instances for cluster monitoring
         sed -i \
-            -e "/mysql-instance-1/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
-            -e "/mysql-instance-2/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT2}\"|" \
-            -e "/postgresql-instance-1/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
-            -e "/postgresql-instance-2/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT2}\"|" \
+            -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
+            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
             "$values_file"
     fi
     

@@ -109,22 +109,20 @@ data:
               - __meta_kubernetes_service_name
               target_label: kubernetes_name
 
-          # MySQL Exporters - Static configuration
+          # MySQL Exporters - Static configuration (cluster-based)
           - job_name: mysql-exporters
             static_configs:
             - targets:
-              - mysql-instance-1.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9104
-              - mysql-instance-2.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9104
+              - mysql-cluster.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9104
               labels:
                 job: mysql-exporters
                 kubernetes_namespace: {{ .Values.global.namespace | default "observability" }}
 
-          # PostgreSQL Exporters - Static configuration
+          # PostgreSQL Exporters - Static configuration (cluster-based)
           - job_name: postgresql-exporters
             static_configs:
             - targets:
-              - postgresql-instance-1.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9187
-              - postgresql-instance-2.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9187
+              - postgresql-cluster.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9187
               labels:
                 job: postgresql-exporters
                 kubernetes_namespace: {{ .Values.global.namespace | default "observability" }}
