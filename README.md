@@ -35,8 +35,8 @@ helm version
 3. **Module 3**: EKS Cluster Setup (EKS 1.30)
 4. **Module 4**: Amazon Managed Prometheus Setup
 5. **Module 5**: Amazon Managed Grafana Setup
-6. **Module 6**: Deploy Monitoring Stack with Helm ⭐
-7. **Module 7**: Dashboard Configuration (MySQL + PostgreSQL) ⭐
+6. **Module 6**: Deploy Monitoring Stack with Helm
+7. **Module 7**: Dashboard Configuration (MySQL + PostgreSQL)
 8. **Module 8**: Monitoring Best Practices
 
 ## Module 1: Environment Setup
@@ -389,7 +389,7 @@ helm rollback db-monitoring 1 -n observability
 helm uninstall db-monitoring -n observability
 ```
 
-## Module 7: Dashboard Configuration ⭐
+## Module 7: Dashboard Configuration
 
 ### Import MySQL Dashboard
 
@@ -397,7 +397,7 @@ helm uninstall db-monitoring -n observability
 2. Import dashboard from `dashboards/mysql.json`
 3. Configure data source as "AMP"
 
-### Import PostgreSQL Dashboard ⭐
+### Import PostgreSQL Dashboard
 
 1. Import the new PostgreSQL dashboard from `dashboards/postgresql.json`
 2. Configure data source as "AMP"
