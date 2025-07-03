@@ -1,0 +1,92 @@
+# Production environment values
+global:
+  namespace: observability
+  region: us-east-1
+  clusterName: ""
+  rbac:
+    create: true
+
+# Amazon Managed Prometheus configuration
+amp:
+  workspaceId: ""
+  endpoint: ""
+  region: us-east-1
+
+# ADOT Collector configuration - values passed to subchart
+adot-collector:
+  enabled: true
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: ""
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  config:
+    scrapeInterval: 15s
+    scrapeTimeout: 10s
+  amp:
+    endpoint: ""
+    region: us-east-1
+
+# MySQL Exporter configuration - values passed to subchart
+mysql-exporter:
+  enabled: true
+  instances:
+    - name: mysql-instance-1
+      endpoint: ""
+      port: 3306
+      username: admin
+      password: adminadmin
+      enabled: true
+    - name: mysql-instance-2
+      endpoint: ""
+      port: 3306
+      username: admin
+      password: adminadmin
+      enabled: true
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# PostgreSQL Exporter configuration - values passed to subchart
+postgresql-exporter:
+  enabled: true
+  instances:
+    - name: postgresql-instance-1
+      endpoint: ""
+      port: 5432
+      username: root
+      password: rootroot
+      database: postgres
+      sslmode: disable
+      enabled: true
+    - name: postgresql-instance-2
+      endpoint: ""
+      port: 5432
+      username: root
+      password: rootroot
+      database: postgres
+      sslmode: disable
+      enabled: true
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Security settings
+security:
+  rbac:
+    create: true
+  networkPolicy:
+    enabled: true

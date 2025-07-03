@@ -114,7 +114,7 @@ eksctl version
 
 ```bash
 # Set environment variables
-export WORKSHOP_NAME=db-monitoring-workshop
+export WORKSHOP_NAME=integrated-db-monitoring
 export AWS_REGION=$(aws configure get region)
 export VPC_CIDR="10.0.0.0/16"
 export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)

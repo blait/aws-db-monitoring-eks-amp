@@ -4,7 +4,7 @@ kind: ClusterConfig
 metadata:
   name: ${WORKSHOP_NAME}-eks
   region: ${AWS_REGION}
-  version: "1.31"
+  version: "1.30"
 
 vpc:
   id: ${VPC_ID}

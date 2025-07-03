@@ -1,0 +1,49 @@
+# Default values for postgresql-exporter
+instances:
+  - name: postgresql-instance-1
+    endpoint: ""
+    port: 5432
+    username: root
+    password: rootroot
+    database: postgres
+    sslmode: disable
+    enabled: true
+  - name: postgresql-instance-2
+    endpoint: ""
+    port: 5432
+    username: root
+    password: rootroot
+    database: postgres
+    sslmode: disable
+    enabled: true
+
+image:
+  repository: quay.io/prometheuscommunity/postgres-exporter
+  tag: v0.10.1
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+service:
+  type: ClusterIP
+  port: 9187
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9187"
+
+# PostgreSQL exporter configuration
+config:
+  autoDiscoverDatabases: false
+  excludeDatabases: []
+  includeDatabases: []
+  constantLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

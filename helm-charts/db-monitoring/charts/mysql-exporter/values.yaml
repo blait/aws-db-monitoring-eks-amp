@@ -1,0 +1,57 @@
+# Default values for mysql-exporter
+instances:
+  - name: mysql-instance-1
+    endpoint: ""
+    port: 3306
+    username: admin
+    password: adminadmin
+    enabled: true
+  - name: mysql-instance-2
+    endpoint: ""
+    port: 3306
+    username: admin
+    password: adminadmin
+    enabled: true
+
+image:
+  repository: prom/mysqld-exporter
+  tag: v0.14.0
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+service:
+  type: ClusterIP
+  port: 9104
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9104"
+
+# MySQL exporter specific flags
+collectors:
+  info_schema_tables: true
+  info_schema_innodb_metrics: true
+  global_status: true
+  global_variables: true
+  slave_status: false  # Disable - Aurora doesn't support this
+  info_schema_processlist: true
+  info_schema_query_response_time: false  # Disable - not available in Aurora
+  info_schema_replica_host: false  # Disable - causes the MASTER_SLAVE_LATENCY error
+  info_schema_tablestats: true
+  info_schema_schemastats: true
+  info_schema_userstats: true
+  perf_schema_eventsstatements: false  # Disable - can be resource intensive
+  perf_schema_file_events: false  # Disable - can be resource intensive
+  perf_schema_indexiowaits: false  # Disable - can be resource intensive
+  perf_schema_tableiowaits: false  # Disable - can be resource intensive
+  perf_schema_tablelocks: false  # Disable - can be resource intensive
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

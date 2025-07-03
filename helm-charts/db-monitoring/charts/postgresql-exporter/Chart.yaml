@@ -1,0 +1,13 @@
+apiVersion: v2
+name: postgresql-exporter
+description: Prometheus PostgreSQL Exporter for database metrics collection
+type: application
+version: 1.0.0
+appVersion: "0.15.0"
+keywords:
+  - postgresql
+  - postgres
+  - prometheus
+  - exporter
+  - monitoring
+  - database

@@ -1,0 +1,12 @@
+apiVersion: v2
+name: adot-collector
+description: AWS Distro for OpenTelemetry Collector for metrics collection
+type: application
+version: 1.0.0
+appVersion: "0.40.0"
+keywords:
+  - adot
+  - opentelemetry
+  - metrics
+  - prometheus
+  - aws
