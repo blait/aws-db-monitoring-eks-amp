@@ -62,9 +62,11 @@ Resources:
     Properties:
       ReplicationGroupId: !Sub ${EnvironmentName}-redis
       ReplicationGroupDescription: Redis cluster for workshop
-      Engine: redis
-      CacheNodeType: cache.t3.micro # 워크숍용으로 작은 타입 사용, 필요시 변경
+      Engine: valkey
+      EngineVersion: "7.2"
+      CacheNodeType: cache.r7g.large # 워크숍용으로 작은 타입 사용, 필요시 변경
       NumCacheClusters: 2 # (Replication Group은 2개 이상의 노드를 권장)
+      ClusterModeEnabled: true
       AutomaticFailoverEnabled: true
       AutoMinorVersionUpgrade: true
       SecurityGroupIds:
