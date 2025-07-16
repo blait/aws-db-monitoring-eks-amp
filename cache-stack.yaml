@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Cache Stack for ElastiCache Redis
+  This template creates an ElastiCache Redis Replication Group.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: integrated-db-monitoring
+    Description: Environment name used for resource naming and tagging
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where ElastiCache cluster will be created (from networking-stack output)
+
+  DatabaseSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of database subnet IDs for ElastiCache cluster (from networking-stack output)
+
+  PrivateSubnetCidrs:
+    Type: List<String>
+    Description: List of private subnet CIDR blocks for security group rules (from networking-stack output)
+
+Resources:
+  ##############################################################################
+  # ElastiCache Redis
+  ##############################################################################
+  ElastiCacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for ElastiCache Redis cluster
+      SubnetIds: !Ref DatabaseSubnets
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-elasticache-subnet-group
+
+  ElastiCacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ElastiCache Redis cluster
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # EKS 노드(PrivateSubnetCidrs)에서 Redis 포트 6379로의 접근 허용
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-elasticache-sg
+
+  ElastiCacheReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupId: !Sub ${EnvironmentName}-redis
+      ReplicationGroupDescription: Redis cluster for workshop
+      Engine: redis
+      CacheNodeType: cache.t3.micro # 워크숍용으로 작은 타입 사용, 필요시 변경
+      NumCacheClusters: 2 # (Replication Group은 2개 이상의 노드를 권장)
+      AutomaticFailoverEnabled: true
+      AutoMinorVersionUpgrade: true
+      SecurityGroupIds:
+        - !Ref ElastiCacheSecurityGroup
+      CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
+      Port: 6379
+      SnapshotRetentionLimit: 7
+      TransitEncryptionEnabled: true # 전송 중 암호화 활성화 (권장)
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-redis
+
+Outputs:
+  ElastiCacheRedisEndpoint:
+    Description: The primary endpoint for the ElastiCache Redis cluster
+    Value: !GetAtt ElastiCacheReplicationGroup.PrimaryEndPoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-ElastiCacheRedisEndpoint
+
+  ElastiCacheRedisPort:
+    Description: The port for the ElastiCache Redis cluster
+    Value: !GetAtt ElastiCacheReplicationGroup.PrimaryEndPoint.Port
+    Export:
+      Name: !Sub ${AWS::StackName}-ElastiCacheRedisPort

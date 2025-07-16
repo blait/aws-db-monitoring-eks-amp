@@ -141,6 +141,35 @@ export POSTGRESQL_ENDPOINT2=$(aws cloudformation describe-stacks \
   --stack-name ${WORKSHOP_NAME}-db \
   --query 'Stacks[0].Outputs[?OutputKey==`PostgreSQLInstance2Endpoint`].OutputValue' \
   --output text)
+  
+# Deploy cache stack
+aws cloudformation create-stack \
+  --stack-name ${WORKSHOP_NAME}-cache \
+  --template-body file://cache-stack.yaml \
+  --parameters \
+    ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
+    ParameterKey=VpcId,ParameterValue=$VPC_ID \
+    ParameterKey=DatabaseSubnets,ParameterValue=\"$DATABASE_SUBNETS\" \
+    ParameterKey=PrivateSubnetCidrs,ParameterValue=\"$PRIVATE_SUBNET_CIDRS\" \
+  --capabilities CAPABILITY_IAM
+
+# Wait for completion
+aws cloudformation wait stack-create-complete \
+  --stack-name ${WORKSHOP_NAME}-cache
+
+# Store ElastiCache endpoint
+export ELASTICACHE_REDIS_ENDPOINT=$(aws cloudformation describe-stacks \
+  --stack-name ${WORKSHOP_NAME}-cache \
+  --query 'Stacks[0].Outputs[?OutputKey==`ElastiCacheRedisEndpoint`].OutputValue' \
+  --output text)
+
+export ELASTICACHE_REDIS_PORT=$(aws cloudformation describe-stacks \
+  --stack-name ${WORKSHOP_NAME}-cache \
+  --query 'Stacks[0].Outputs[?OutputKey==`ElastiCacheRedisPort`].OutputValue' \
+  --output text)
+
+echo "ElastiCache Redis Endpoint: $ELASTICACHE_REDIS_ENDPOINT"
+echo "ElastiCache Redis Port: $ELASTICACHE_REDIS_PORT"
 ```
 
 ## Module 3: EKS Cluster Setup (EKS 1.30)
