@@ -1,0 +1,12 @@
+apiVersion: v2 #Helm 3 API
+name: redis-exporter
+description: Prometheus valkey exporter for Valkey metrics collection
+version: 1.0.0
+type: application
+appVersion: "1.65.0"
+keywords:
+  - redis
+  - valkey
+  - exporter
+  - prometheus
+  - metrics

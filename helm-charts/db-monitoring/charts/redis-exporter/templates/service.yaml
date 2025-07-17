@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redis-exporter.fullname" . }}-{{ .name }}
+  labels:
+    {{- include "redis-exporter.labels" . | nindent 4 }}
+    app.kubernetes.io/instance: {{ .name }}
+  annotations:
+    {{- toYaml $.Values.service.annotations | nindent 4 }}
+spec:
+  type: {{ $.Values.service.type }}
+  ports:
+    - port: {{ $.Values.service.type }}
+      targetPort: http-metrics
+      protocol: TCP
+      name: http-metrics
+  selector:
+    {{- include "redis-exporter.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/instance: {{ .name  }}

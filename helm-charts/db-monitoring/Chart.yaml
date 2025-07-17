@@ -30,3 +30,6 @@ dependencies:
   - name: postgresql-exporter
     version: "1.0.0"
     condition: postgresql.enabled
+  - name: redis-exporter
+    version: "1.0.0" # redis-exporter의 실제 버전
+    repository: "file://./charts/redis-exporter" # 로컬 경로

@@ -41,6 +41,7 @@ check_env_vars() {
         "MYSQL_ENDPOINT2"
         "POSTGRESQL_ENDPOINT1"
         "POSTGRESQL_ENDPOINT2"
+        "VALKEY_ENDPOINT"
     )
     
     local missing_vars=()
@@ -121,6 +122,7 @@ deploy_monitoring() {
         sed -i '' \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
+            -e "/redis-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${VALKEY_ENDPOINT}\"|" \
             "$values_file"
     else
         # Linux sed syntax - use simpler patterns
@@ -138,6 +140,7 @@ deploy_monitoring() {
         sed -i \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
+            -e "/redis-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${VALKEY_ENDPOINT}\"|" \
             "$values_file"
     fi
     

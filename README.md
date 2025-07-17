@@ -157,19 +157,19 @@ aws cloudformation create-stack \
 aws cloudformation wait stack-create-complete \
   --stack-name ${WORKSHOP_NAME}-cache
 
-# Store ElastiCache endpoint
-export ELASTICACHE_REDIS_ENDPOINT=$(aws cloudformation describe-stacks \
+# Store ElastiCache Valkey endpoint
+export ELASTICACHE_VALKEY_ENDPOINT=$(aws cloudformation describe-stacks \
   --stack-name ${WORKSHOP_NAME}-cache \
   --query 'Stacks[0].Outputs[?OutputKey==`ElastiCacheRedisEndpoint`].OutputValue' \
   --output text)
 
-export ELASTICACHE_REDIS_PORT=$(aws cloudformation describe-stacks \
+export ELASTICACHE_VALKEY_PORT=$(aws cloudformation describe-stacks \
   --stack-name ${WORKSHOP_NAME}-cache \
   --query 'Stacks[0].Outputs[?OutputKey==`ElastiCacheRedisPort`].OutputValue' \
   --output text)
 
-echo "ElastiCache Redis Endpoint: $ELASTICACHE_REDIS_ENDPOINT"
-echo "ElastiCache Redis Port: $ELASTICACHE_REDIS_PORT"
+echo "ElastiCache Valkey Endpoint: $ELASTICACHE_VALKEY_ENDPOINT"
+echo "ElastiCache Valkey Port: $ELASTICACHE_VALKEY_PORT"
 ```
 
 ## Module 3: EKS Cluster Setup (EKS 1.30)

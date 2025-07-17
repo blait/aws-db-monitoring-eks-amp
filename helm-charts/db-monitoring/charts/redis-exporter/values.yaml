@@ -1,0 +1,39 @@
+#Default values for redis-exporter
+replicaCount: 1 #exporter pod 개수
+
+image:
+  repository: oliver006/redis_exporter
+  tag: v1.65.0
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: redis-exporter
+  annotations: {} #IRSA를 위한 어노테이션 필요
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+service:
+  type: ClusterIP
+  port: 9121
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+instances:
+  - name: elasticache-valkey-cluster
+    endpoint: ""
+    port: 6379
+    password: ""
+    enabled: true
+    redis_cluster_client_metrics: true

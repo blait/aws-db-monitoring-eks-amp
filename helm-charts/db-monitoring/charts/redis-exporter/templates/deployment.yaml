@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "redis-exporter.fullname" . }}-{{ .name }}
+  labels:
+    {{- include "redis-exporter.labels" . | nindent 4 }}
+    app.kubernetes.io/instance: {{ .name }}
+spec:
+  replicas: 1 # .Values.replicaCount로 변경 가능
+  selector:
+    matchLabels:
+      {{- include "redis-exporter.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/instance: {{ .name }}
+  template:
+    metadata:
+      labels:
+        {{- include "redis-exporter.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/instance: {{ .name }}
+    spec:
+      serviceAccountName: {{ include "redis-exporter.serviceAccountName" . }}
+      containers:
+        - name: redis-exporter
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args:
+            - "--redis.addr={{ .endpoint }}:{{ .port }}"
+            # 비밀번호가 없으므로, --redis.password 관련 args 및 env 섹션은 제거합니다.
+            # ElastiCache Valkey 클러스터는 클러스터 모드로 동작하므로 이 플래그를 활성화합니다.
+            - "--redis.cluster-client-metrics" # Valkey 지표 수집에 중요!
+            # 필요에 따라 추가 exporter 옵션을 여기에 추가할 수 있습니다.
+            # 예: - "--check-keys=db0=mykey_*"
+          # 비밀번호가 없으므로, env 섹션도 제거합니다.
+          ports:
+            - name: http-metrics
+              containerPort: {{ $.Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: http-metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: http-metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
