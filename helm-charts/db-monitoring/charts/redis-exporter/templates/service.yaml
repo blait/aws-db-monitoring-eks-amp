@@ -1,19 +1,31 @@
+{{- range .Values.instances }} # <-- 이 라인을 맨 위에 추가
+  {{- if .enabled }}              # <-- 이 라인도 추가
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "redis-exporter.fullname" . }}-{{ .name }}
+  # 이제 .name은 각 인스턴스의 이름(예: elasticache-valkey-cluster)을 참조합니다.
+  # 서비스 이름은 인스턴스 이름만으로 충분하거나, 더 긴 접두사를 원한다면 fullname을 $ 문맥에서 사용합니다.
+  # MySQL Exporter와 일관성을 위해 인스턴스 이름만 사용하도록 변경합니다.
+  name: {{ .name | lower | replace "_" "-" | trunc 63 | trimSuffix "-" }} # <-- 서비스 이름을 이렇게 변경합니다.
+  # (예: elasticache-valkey-cluster)
+  namespace: {{ $.Release.Namespace }} # <-- 네임스페이스 참조를 이렇게 변경하는 것이 일반적입니다.
   labels:
-    {{- include "redis-exporter.labels" . | nindent 4 }}
-    app.kubernetes.io/instance: {{ .name }}
+    {{- include "redis-exporter.labels" $ | nindent 4 }}
+    app.kubernetes.io/instance: {{ .name | lower | replace "_" "-" }} # 인스턴스 이름으로 레이블을 설정합니다.
+    app.kubernetes.io/component: {{ .name | lower | replace "_" "-" }} # 컴포넌트 레이블 추가 (셀렉터와 일치)
   annotations:
     {{- toYaml $.Values.service.annotations | nindent 4 }}
 spec:
   type: {{ $.Values.service.type }}
   ports:
-    - port: {{ $.Values.service.type }}
+    - port: {{ $.Values.service.port }}
       targetPort: http-metrics
       protocol: TCP
       name: http-metrics
   selector:
-    {{- include "redis-exporter.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/instance: {{ .name  }}
+    {{- include "redis-exporter.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/instance: {{ .name | lower | replace "_" "-" }} # 셀렉터가 POD의 레이블과 일치해야 합니다.
+    app.kubernetes.io/component: {{ .name | lower | replace "_" "-" }} # 컴포넌트 레이블 추가 (셀렉터와 일치)
+  {{- end }} # <-- 이 라인을 파일 마지막에 추가
+  {{- end }} # <-- 이 라인도 파일 마지막에 추가

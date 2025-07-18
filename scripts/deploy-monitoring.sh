@@ -41,7 +41,7 @@ check_env_vars() {
         "MYSQL_ENDPOINT2"
         "POSTGRESQL_ENDPOINT1"
         "POSTGRESQL_ENDPOINT2"
-        "VALKEY_ENDPOINT"
+        "ELASTICACHE_VALKEY_ENDPOINT"
     )
     
     local missing_vars=()
