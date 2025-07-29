@@ -145,6 +145,36 @@ postgresql:
     includeDatabases: []
     constantLabels: {}
 
+# Redis Exporter configuration
+redis:
+  enabled: true # 이 값을 true로 설정해야 redis-exporter가 배포됩니다.
+  instances:
+    - name: redis-instance-1
+      endpoint: "" # 실제 Redis 서버의 IP 주소 또는 호스트 이름 입력
+      port: 6379 # Redis 서버의 포트 (기본값: 6379)
+      password: "" # Redis 서버에 비밀번호가 있다면 입력. 없다면 제거 또는 빈 값 유지
+      enabled: true # 인스턴스를 활성화할지 여부
+
+  image:
+    repository: oliver006/redis_exporter
+    tag: v1.65.0 # 최신 안정 버전 확인 후 필요 시 변경
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  service:
+    type: ClusterIP
+    port: 9121 # Redis Exporter의 기본 메트릭 포트 (일반적으로 9121)
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9121"
+
 # Monitoring and observability settings
 monitoring:
   serviceMonitor:

@@ -1,6 +1,14 @@
 #Default values for redis-exporter
 replicaCount: 1 #exporter pod 개수
 
+instances:
+  - name: elasticache-valkey-cluster
+    endpoint: ""
+    port: 6379
+    password: ""
+    enabled: true
+    redis_cluster_client_metrics: true
+
 image:
   repository: oliver006/redis_exporter
   tag: v1.65.0
@@ -29,11 +37,3 @@ service:
 nodeSelector: {}
 tolerations: []
 affinity: {}
-
-instances:
-  - name: elasticache-valkey-cluster
-    endpoint: ""
-    port: 6379
-    password: ""
-    enabled: true
-    redis_cluster_client_metrics: true

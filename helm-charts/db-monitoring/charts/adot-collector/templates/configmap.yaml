@@ -126,6 +126,15 @@ data:
               labels:
                 job: postgresql-exporters
                 kubernetes_namespace: {{ .Values.global.namespace | default "observability" }}
+    
+          # Redis Exporters - Static configuration (cluster-based)
+          - job_name: redis-exporters
+            static_configs:
+            - targets:
+              - redis-exporter.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9121 # redis-exporter 서비스 이름과 포트
+              labels:
+                job: redis-exporters
+                kubernetes_namespace: {{ .Values.global.namespace | default "observability" }}
 
     exporters:
       prometheusremotewrite:

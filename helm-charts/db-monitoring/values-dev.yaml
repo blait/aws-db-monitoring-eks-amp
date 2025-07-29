@@ -67,16 +67,16 @@ postgresql-exporter:
       sslmode: disable
       enabled: true
 
-# Redis Exporter configuration - values passed to subchart
+# redis-exporter configuration
 redis-exporter:
   enabled: true
   instances:
-    - name: elasticache-valkey-cluster # redis-exporter/values.yaml의 인스턴스 이름과 일치
-      endpoint: "" # 스크립트가 VALKEY_ENDPOINT로 채울 부분
+    - name: elasticache-valkey-cluster # 이 이름은 redis-exporter/values.yaml의 인스턴스 이름과 일치해야 합니다.
+      endpoint: "" # deploy-monitoring.sh 스크립트가 VALKEY_ENDPOINT로 채울 부분입니다.
       port: 6379 # Valkey 기본 포트
   image:
     repository: oliver006/redis_exporter
-    tag: v1.65.0 # 사용하고자 하는 버전
+    tag: v1.65.0 # 사용하고자 하는 버전 (redis-exporter/Chart.yaml의 appVersion과 일치)
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -91,3 +91,4 @@ redis-exporter:
     annotations:
       prometheus.io/scrape: "true"
       prometheus.io/port: "9121"
+
