@@ -123,8 +123,8 @@ deploy_monitoring() {
         sed -i '' \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
-            -e "/redis-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
-            -e "/redis-exporter:/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
+            -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
+            -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
     else
         # Linux sed syntax - use simpler patterns
@@ -142,8 +142,8 @@ deploy_monitoring() {
         sed -i \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
-            -e "/redis-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
-            -e "/redis-exporter:/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
+            -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
+            -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
     fi
     
