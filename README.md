@@ -88,6 +88,11 @@ export VPC_ID=$(aws cloudformation describe-stacks \
   --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' \
   --output text)
 
+export PUBLIC_SUBNETS=$(aws cloudformation describe-stacks \
+  --stack-name ${WORKSHOP_NAME}-network \
+  --query 'Stacks[0].Outputs[?OutputKey==`PublicSubnets`].OutputValue' \
+  --output text)
+
 export PRIVATE_SUBNETS=$(aws cloudformation describe-stacks \
   --stack-name ${WORKSHOP_NAME}-network \
   --query 'Stacks[0].Outputs[?OutputKey==`PrivateSubnets`].OutputValue' \
@@ -105,17 +110,19 @@ export PRIVATE_SUBNET_CIDRS=$(aws cloudformation describe-stacks \
 
 # Deploy database stack
 aws cloudformation create-stack \
-  --stack-name ${WORKSHOP_NAME}-db \
+  --stack-name ${WORKSHOP_NAME}-database \
   --template-body file://database-stack.yaml \
   --parameters \
     ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
     ParameterKey=VpcId,ParameterValue=$VPC_ID \
     ParameterKey=DatabaseSubnets,ParameterValue=\"$DATABASE_SUBNETS\" \
     ParameterKey=PrivateSubnetCidrs,ParameterValue=\"$PRIVATE_SUBNET_CIDRS\" \
+    ParameterKey=PublicSubnets,ParameterValue=\"$PUBLIC_SUBNETS\" \
     ParameterKey=MySQLMasterUsername,ParameterValue=admin \
     ParameterKey=MySQLMasterPassword,ParameterValue=adminadmin \
     ParameterKey=PostgreSQLMasterUsername,ParameterValue=root \
-    ParameterKey=PostgreSQLMasterPassword,ParameterValue=rootroot
+    ParameterKey=PostgreSQLMasterPassword,ParameterValue=rootroot 
+
 
 # Wait for completion (15-20 minutes)
 aws cloudformation wait stack-create-complete \

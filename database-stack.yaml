@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Description: |
   Database Stack for Aurora EKS AMP Monitoring
   This template creates Aurora MySQL and PostgreSQL clusters.
@@ -20,6 +20,15 @@ Parameters:
   PrivateSubnetCidrs:
     Type: List<String>
     Description: List of private subnet CIDR blocks for security group rules
+
+  PublicSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of public subnet IDs for bastion host
+
+  KeyPairName:
+    Type: String
+    Default: bastion-host-keypair
+    Description: Name for the EC2 Key Pair to be created for bastion host access
 
   MySQLMasterUsername:
     Type: String
@@ -43,7 +52,46 @@ Parameters:
     NoEcho: true
     Description: Master password for Aurora PostgreSQL cluster
 
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
 Resources:
+  ##############################################################################
+  # EC2 Key Pair
+  ##############################################################################
+  WorkshopKeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Ref KeyPairName
+      KeyType: rsa
+      KeyFormat: pem
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-keypair
+
+  ##############################################################################
+  # Bastion Host Security Group (defined early to avoid circular dependencies)
+  ##############################################################################
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for bastion host
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH access from anywhere
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: All outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-bastion-sg
+
   ##############################################################################
   # Aurora MySQL
   ##############################################################################
@@ -66,14 +114,22 @@ Resources:
           FromPort: 3306
           ToPort: 3306
           CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 1
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 2
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 3
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+          Description: Access from bastion host
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-mysql-sg
@@ -88,7 +144,7 @@ Resources:
       MasterUserPassword: !Ref MySQLMasterPassword
       DBSubnetGroupName: !Ref MySQLDBSubnetGroup
       BackupRetentionPeriod: 7
-      DeletionProtection: true
+      DeletionProtection: false
       VpcSecurityGroupIds:
         - !Ref MySQLSecurityGroup
       Tags:
@@ -137,14 +193,22 @@ Resources:
           FromPort: 5432
           ToPort: 5432
           CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 1
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
           CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 2
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
           CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 3
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+          Description: Access from bastion host
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-postgresql-sg
@@ -159,7 +223,7 @@ Resources:
       MasterUserPassword: !Ref PostgreSQLMasterPassword
       DBSubnetGroupName: !Ref PostgreSQLDBSubnetGroup
       BackupRetentionPeriod: 7
-      DeletionProtection: true
+      DeletionProtection: false
       VpcSecurityGroupIds:
         - !Ref PostgreSQLSecurityGroup
       Tags:
@@ -185,6 +249,220 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-aurora-postgresql-2
+
+  ##############################################################################
+  # Bastion Host
+  ##############################################################################
+  BastionHost:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId # Amazon Linux 2023 AMI (update for your region)
+      InstanceType: t2.micro
+      KeyName: !Ref WorkshopKeyPair
+      SubnetId: !Select [0, !Ref PublicSubnets]
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      IamInstanceProfile: !Ref BastionInstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo dnf update -y
+
+          # Install MySQL client
+          sudo dnf install -y mariadb105
+
+          # Install PostgreSQL client
+          sudo dnf install -y postgresql15
+
+          # Install performance testing tools
+          sudo dnf install -y git python3 python3-pip htop iotop
+
+          # Install sysbench for MySQL performance testing
+          curl -s https://packagecloud.io/install/repositories/akopytov/sysbench/script.rpm.sh | bash
+          sudo dnf install -y sysbench
+
+          # Install pgbench (comes with PostgreSQL)
+          # Already included with postgresql15 package
+
+          # Create performance test scripts directory
+          mkdir -p /home/ec2-user/performance-tests
+          chown ec2-user:ec2-user /home/ec2-user/performance-tests
+
+          # Create MySQL performance test script
+          cat > /home/ec2-user/performance-tests/mysql-test.sh << 'EOF'
+          #!/bin/bash
+
+          # MySQL Performance Test Script
+          MYSQL_HOST=${MySQLCluster.Endpoint.Address}
+          MYSQL_USER=${MySQLMasterUsername}
+          MYSQL_PASS=${MySQLMasterPassword}
+          MYSQL_DB=aurora_mysql_db
+
+          echo "Starting MySQL Performance Test..."
+          echo "MySQL Host: $MYSQL_HOST"
+
+          # Test connection
+          mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASS -e "SELECT VERSION();" $MYSQL_DB
+
+          # Prepare test data
+          sysbench oltp_read_write \
+            --mysql-host=$MYSQL_HOST \
+            --mysql-user=$MYSQL_USER \
+            --mysql-password=$MYSQL_PASS \
+            --mysql-db=$MYSQL_DB \
+            --tables=4 \
+            --table-size=100000 \
+            prepare
+
+          # Run performance test
+          echo "Running MySQL performance test for 300 seconds..."
+          sysbench oltp_read_write \
+            --mysql-host=$MYSQL_HOST \
+            --mysql-user=$MYSQL_USER \
+            --mysql-password=$MYSQL_PASS \
+            --mysql-db=$MYSQL_DB \
+            --tables=4 \
+            --table-size=100000 \
+            --threads=16 \
+            --time=300 \
+            --report-interval=10 \
+            run
+
+          # Cleanup
+          sysbench oltp_read_write \
+            --mysql-host=$MYSQL_HOST \
+            --mysql-user=$MYSQL_USER \
+            --mysql-password=$MYSQL_PASS \
+            --mysql-db=$MYSQL_DB \
+            --tables=4 \
+            cleanup
+
+          echo "MySQL Performance Test Completed!"
+          EOF
+
+          # Create PostgreSQL performance test script
+          cat > /home/ec2-user/performance-tests/postgresql-test.sh << 'EOF'
+          #!/bin/bash
+
+          # PostgreSQL Performance Test Script
+          PG_HOST=${PostgreSQLCluster.Endpoint.Address}
+          PG_USER=${PostgreSQLMasterUsername}
+          PG_PASS=${PostgreSQLMasterPassword}
+          PG_DB=aurora_postgresql_db
+
+          export PGPASSWORD=$PG_PASS
+
+          echo "Starting PostgreSQL Performance Test..."
+          echo "PostgreSQL Host: $PG_HOST"
+
+          # Test connection
+          psql -h $PG_HOST -U $PG_USER -d $PG_DB -c "SELECT version();"
+
+          # Initialize pgbench database
+          pgbench -h $PG_HOST -U $PG_USER -d $PG_DB -i -s 100
+
+          # Run performance test
+          echo "Running PostgreSQL performance test for 300 seconds..."
+          pgbench -h $PG_HOST -U $PG_USER -d $PG_DB \
+            -c 16 \
+            -j 4 \
+            -T 300 \
+            -P 10 \
+            -r
+
+          echo "PostgreSQL Performance Test Completed!"
+          EOF
+
+          # Make scripts executable
+          chmod +x /home/ec2-user/performance-tests/*.sh
+          chown ec2-user:ec2-user /home/ec2-user/performance-tests/*.sh
+
+          # Create a combined test script
+          cat > /home/ec2-user/performance-tests/run-all-tests.sh << 'EOF'
+          #!/bin/bash
+
+          echo "=== Starting Database Performance Tests ==="
+          echo "Timestamp: $(date)"
+
+          echo ""
+          echo "=== MySQL Performance Test ==="
+          /home/ec2-user/performance-tests/mysql-test.sh
+
+          echo ""
+          echo "=== Waiting 60 seconds before PostgreSQL test ==="
+          sleep 60
+
+          echo ""
+          echo "=== PostgreSQL Performance Test ==="
+          /home/ec2-user/performance-tests/postgresql-test.sh
+
+          echo ""
+          echo "=== All Performance Tests Completed ==="
+          echo "Timestamp: $(date)"
+          EOF
+
+          chmod +x /home/ec2-user/performance-tests/run-all-tests.sh
+          chown ec2-user:ec2-user /home/ec2-user/performance-tests/run-all-tests.sh
+
+          # Create README for the user
+          cat > /home/ec2-user/performance-tests/README.md << 'EOF'
+          # Database Performance Testing Scripts
+
+          This directory contains scripts to test the performance of Aurora MySQL and PostgreSQL clusters.
+
+          ## Available Scripts:
+
+          1. **mysql-test.sh** - Tests MySQL performance using sysbench
+          2. **postgresql-test.sh** - Tests PostgreSQL performance using pgbench  
+          3. **run-all-tests.sh** - Runs both tests sequentially
+
+          ## Usage:
+
+          ```bash
+          # Run individual tests
+          ./mysql-test.sh
+          ./postgresql-test.sh
+
+          # Run all tests
+          ./run-all-tests.sh
+          ```
+
+          ## Test Details:
+
+          - **MySQL Test**: Uses sysbench with OLTP read/write workload, 4 tables, 100K rows each, 16 threads, 5 minutes
+          - **PostgreSQL Test**: Uses pgbench with default workload, scale factor 100, 16 clients, 4 jobs, 5 minutes
+
+          ## Monitoring:
+
+          While tests are running, you can monitor the metrics in Grafana dashboards to see the impact on database performance.
+          EOF
+
+          chown ec2-user:ec2-user /home/ec2-user/performance-tests/README.md
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-bastion-host
+
+  BastionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-bastion-role
+
+  BastionInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BastionRole
 
 Outputs:
   MySQLClusterEndpoint:
@@ -234,3 +512,33 @@ Outputs:
     Value: !GetAtt PostgreSQLInstance2.Endpoint.Address
     Export:
       Name: !Sub ${AWS::StackName}-PostgreSQLInstance2Endpoint
+
+  BastionHostInstanceId:
+    Description: Instance ID of the bastion host
+    Value: !Ref BastionHost
+    Export:
+      Name: !Sub ${AWS::StackName}-BastionHostInstanceId
+
+  BastionHostPublicIP:
+    Description: Public IP address of the bastion host
+    Value: !GetAtt BastionHost.PublicIp
+    Export:
+      Name: !Sub ${AWS::StackName}-BastionHostPublicIP
+
+  BastionHostPrivateIP:
+    Description: Private IP address of the bastion host
+    Value: !GetAtt BastionHost.PrivateIp
+    Export:
+      Name: !Sub ${AWS::StackName}-BastionHostPrivateIP
+
+  KeyPairId:
+    Description: ID of the created EC2 Key Pair
+    Value: !Ref WorkshopKeyPair
+    Export:
+      Name: !Sub ${AWS::StackName}-KeyPairId
+
+  KeyPairName:
+    Description: Name of the created EC2 Key Pair
+    Value: !Ref KeyPairName
+    Export:
+      Name: !Sub ${AWS::StackName}-KeyPairName
