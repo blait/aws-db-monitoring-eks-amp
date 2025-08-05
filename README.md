@@ -492,25 +492,6 @@ Both dashboards include:
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Pods not starting**: Check resource limits and node capacity
-   ```bash
-   kubectl describe pods -n observability
-   kubectl top nodes
-   ```
-
-2. **ADOT Collector not scraping**: Verify IAM role and AMP endpoint
-   ```bash
-   kubectl logs -n observability -l app.kubernetes.io/name=adot-collector
-   ```
-
-3. **Database exporters failing**: Check database connectivity and credentials
-   ```bash
-   kubectl logs -n observability -l app.kubernetes.io/name=mysql-exporter
-   kubectl logs -n observability -l app.kubernetes.io/name=postgresql-exporter
-   ```
-
 4. **Helm deployment issues**: Check values file and template rendering
    ```bash
    helm template db-monitoring ./helm-charts/db-monitoring --values ./helm-charts/db-monitoring/values-prod.yaml

@@ -57,15 +57,14 @@ spec:
           periodSeconds: 120
           timeoutSeconds: 60
           failureThreshold: 15
-        # Disable readiness probe - it's causing scraping issues
-        # readinessProbe:
-        #   httpGet:
-        #     path: /metrics
-        #     port: metrics
-        #   initialDelaySeconds: 60
-        #   periodSeconds: 20
-        #   timeoutSeconds: 15
-        #   failureThreshold: 8
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          initialDelaySeconds: 60
+          periodSeconds: 20
+          timeoutSeconds: 15
+          failureThreshold: 8
       {{- with $.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
