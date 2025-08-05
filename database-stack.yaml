@@ -143,6 +143,7 @@ Resources:
       MasterUsername: !Ref MySQLMasterUsername
       MasterUserPassword: !Ref MySQLMasterPassword
       DBSubnetGroupName: !Ref MySQLDBSubnetGroup
+      Port: 3306  # Explicitly set MySQL to use standard port 3306
       BackupRetentionPeriod: 7
       DeletionProtection: false
       VpcSecurityGroupIds:
@@ -222,6 +223,7 @@ Resources:
       MasterUsername: !Ref PostgreSQLMasterUsername
       MasterUserPassword: !Ref PostgreSQLMasterPassword
       DBSubnetGroupName: !Ref PostgreSQLDBSubnetGroup
+      Port: 5432  # Explicitly set PostgreSQL to use standard port 5432
       BackupRetentionPeriod: 7
       DeletionProtection: false
       VpcSecurityGroupIds:
