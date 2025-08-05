@@ -42,6 +42,7 @@ check_env_vars() {
         "POSTGRESQL_ENDPOINT1"
         "POSTGRESQL_ENDPOINT2"
         "ELASTICACHE_VALKEY_ENDPOINT"
+        "ELASTICACHE_VALKEY_PORT"
     )
     
     local missing_vars=()
@@ -122,7 +123,8 @@ deploy_monitoring() {
         sed -i '' \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
-            -e "/redis-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${VALKEY_ENDPOINT}\"|" \
+            -e "/redis-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
+            -e "/redis-exporter:/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
     else
         # Linux sed syntax - use simpler patterns
@@ -140,7 +142,8 @@ deploy_monitoring() {
         sed -i \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
-            -e "/redis-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${VALKEY_ENDPOINT}\"|" \
+            -e "/redis-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
+            -e "/redis-exporter:/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
     fi
     
@@ -151,6 +154,10 @@ deploy_monitoring() {
     fi
     
     print_status "Values file created successfully"
+    
+    # Update Helm dependencies
+    print_status "Updating Helm dependencies..."
+    helm dependency update "$chart_path"
     
     # Debug: Show a few lines of the values file to verify substitution worked
     print_status "Verifying values file content..."
@@ -165,9 +172,14 @@ deploy_monitoring() {
         echo "AMP Endpoint: $amp_count occurrences (should be 2)"
         echo "ADOT Role ARN: $(grep -c "${ADOT_ROLE_ARN}" "$values_file" || echo "0") occurrences"
         echo "MySQL Endpoint 1: $(grep -c "${MYSQL_ENDPOINT1}" "$values_file" || echo "0") occurrences"
+        echo "Valkey Endpoint: $(grep -c "${ELASTICACHE_VALKEY_ENDPOINT}" "$values_file" || echo "0") occurrences"
+        echo "Valkey Port: $(grep -c "${ELASTICACHE_VALKEY_PORT}" "$values_file" || echo "0") occurrences"
         echo ""
-        echo "First 40 lines of values file:"
-        head -40 "$values_file"
+        echo "First 50 lines of values file:"
+        head -50 "$values_file"
+        echo ""
+        echo "Redis-exporter section:"
+        grep -A 10 "redis-exporter:" "$values_file" || echo "Redis-exporter section not found"
     fi
     
     # Handle namespace - ensure it exists before Helm operations
@@ -267,6 +279,7 @@ verify_deployment() {
     echo "• ADOT Collector: 500m CPU, 1Gi RAM (requests) / 1000m CPU, 2Gi RAM (limits)"
     echo "• MySQL Exporters: 200m CPU, 256Mi RAM (requests) / 500m CPU, 512Mi RAM (limits)"
     echo "• PostgreSQL Exporters: 200m CPU, 256Mi RAM (requests) / 500m CPU, 512Mi RAM (limits)"
+    echo "• Redis/Valkey Exporters: 100m CPU, 128Mi RAM (requests) / 200m CPU, 256Mi RAM (limits)"
     echo "• Scrape Interval: 15 seconds (high-frequency monitoring)"
     echo "• Network Policies: Enabled"
     echo ""
@@ -274,8 +287,9 @@ verify_deployment() {
     echo "1. Check ADOT Collector logs: kubectl logs -n $namespace -l app.kubernetes.io/name=adot-collector"
     echo "2. Check MySQL exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=mysql-exporter"
     echo "3. Check PostgreSQL exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=postgresql-exporter"
-    echo "4. Access Grafana dashboard using your AMG workspace URL"
-    echo "5. Import the dashboard JSON files from the dashboards/ directory"
+    echo "4. Check Redis/Valkey exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=redis-exporter"
+    echo "5. Access Grafana dashboard using your AMG workspace URL"
+    echo "6. Import the dashboard JSON files from the dashboards/ directory"
 }
 
 # Function to show usage

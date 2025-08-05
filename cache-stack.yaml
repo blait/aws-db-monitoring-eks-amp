@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: |
-  Cache Stack for ElastiCache Redis
-  This template creates an ElastiCache Redis Replication Group.
+  Cache Stack for ElastiCache Valkey
+  This template creates an ElastiCache Valkey Replication Group.
 
 Parameters:
   EnvironmentName:
@@ -40,19 +40,11 @@ Resources:
       GroupDescription: Security group for ElastiCache Valkey cluster
       VpcId: !Ref VpcId
       SecurityGroupIngress:
-        # EKS 노드(PrivateSubnetCidrs)에서 Valkey 포트 6379로의 접근 허용
+        # 모든 private subnet CIDR에서 Valkey 포트 6379로의 접근 허용
         - IpProtocol: tcp
           FromPort: 6379
           ToPort: 6379
-          CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
-        - IpProtocol: tcp
-          FromPort: 6379
-          ToPort: 6379
-          CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
-        - IpProtocol: tcp
-          FromPort: 6379
-          ToPort: 6379
-          CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
+          CidrIp: 10.0.0.0/16  # VPC CIDR 전체 허용 (더 안전하게 하려면 EKS 노드 보안 그룹 참조)
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-elasticache-sg
@@ -66,7 +58,8 @@ Resources:
       EngineVersion: "7.2"
       CacheNodeType: cache.r7g.large # 워크숍용으로 작은 타입 사용, 필요시 변경
       ClusterMode: "enabled"
-      NumCacheClusters: 2
+      NumNodeGroups: 1 # 샤드 수
+      ReplicasPerNodeGroup: 1 # 각 샤드당 복제본 수
       AutomaticFailoverEnabled: true
       AutoMinorVersionUpgrade: true
       SecurityGroupIds:
@@ -74,20 +67,22 @@ Resources:
       CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
       Port: 6379
       SnapshotRetentionLimit: 7
-      TransitEncryptionEnabled: true # 전송 중 암호화 활성화 (권장)
+      TransitEncryptionEnabled: false # 모니터링 호환성을 위해 비활성화
+      AtRestEncryptionEnabled: true # 저장 시 암호화는 유지
+      MultiAZEnabled: true # 다중 AZ 배포
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-valkey
 
 Outputs:
-  ElastiCacheValkeyEndpoint:
-    Description: The primary endpoint for the ElastiCache Valkey cluster
-    Value: !GetAtt ElastiCacheReplicationGroup.PrimaryEndPoint.Address
+  ElastiCacheRedisEndpoint:
+    Description: The configuration endpoint for the ElastiCache Valkey cluster
+    Value: !GetAtt ElastiCacheReplicationGroup.ConfigurationEndPoint.Address
     Export:
-      Name: !Sub ${AWS::StackName}-ElastiCacheValkeyEndpoint
+      Name: !Sub ${AWS::StackName}-ElastiCacheRedisEndpoint
 
-  ElastiCacheValkeyPort:
+  ElastiCacheRedisPort:
     Description: The port for the ElastiCache Valkey cluster
-    Value: !GetAtt ElastiCacheReplicationGroup.PrimaryEndPoint.Port
+    Value: !GetAtt ElastiCacheReplicationGroup.ConfigurationEndPoint.Port
     Export:
-      Name: !Sub ${AWS::StackName}-ElastiCacheValkeyPort
+      Name: !Sub ${AWS::StackName}-ElastiCacheRedisPort
