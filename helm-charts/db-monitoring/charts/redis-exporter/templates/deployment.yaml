@@ -11,7 +11,7 @@ metadata:
   labels:
     {{- include "redis-exporter.labels" $ | nindent 4 }}
     app.kubernetes.io/instance: {{ .name | lower | replace "_" "-" }} # 인스턴스 이름으로 레이블 설정
-    app.kubernetes.io/component: redis-exporter # Exporter의 일반적인 컴포넌트 이름
+    app.kubernetes.io/component: {{ .name | lower | replace "_" "-" }} # 인스턴스 이름으로 컴포넌트 설정
 spec:
   replicas: 1 # .Values.replicaCount (values.yaml의 최상위 replicaCount)를 참조할 수도 있습니다.
   # 현재는 각 인스턴스별로 1개의 Exporter Pod를 배포합니다.
@@ -19,26 +19,25 @@ spec:
     matchLabels:
       {{- include "redis-exporter.selectorLabels" $ | nindent 6 }}
       app.kubernetes.io/instance: {{ .name | lower | replace "_" "-" }} # 셀렉터가 POD의 레이블과 일치해야 합니다.
-      app.kubernetes.io/component: redis-exporter # 컴포넌트 레이블과 일치
+      app.kubernetes.io/component: {{ .name | lower | replace "_" "-" }} # 컴포넌트 레이블과 일치
   template:
     metadata:
       labels:
         {{- include "redis-exporter.selectorLabels" $ | nindent 8 }}
         app.kubernetes.io/instance: {{ .name | lower | replace "_" "-" }}
-        app.kubernetes.io/component: redis-exporter
+        app.kubernetes.io/component: {{ .name | lower | replace "_" "-" }}
     spec:
-      serviceAccountName: {{ include "redis-exporter.serviceAccountName" $ }} # ServiceAccount는 차트 전체에 하나이므로 $를 사용합니다.
       containers:
         - name: redis-exporter
           image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
-          command: ["/bin/redis_exporter"] # redis_exporter 실행 명령어
+          command: ["/redis_exporter"] # redis_exporter 실행 명령어
           args:
             # Redis Exporter의 연결 주소를 인스턴스별로 설정합니다.
             # .endpoint는 values-prod.yaml의 redis-exporter.instances.endpoint를 참조합니다.
             - "--redis.addr={{ .endpoint }}:{{ .port }}"
             # ElastiCache Valkey 클러스터는 클러스터 모드로 동작하므로 이 플래그를 활성화합니다.
-            - "--redis.cluster-client-metrics" # Valkey 지표 수집에 중요!
+            - "--is-cluster" # Valkey 클러스터 지표 수집에 중요!
             # Exporter가 지표를 노출할 주소와 경로
             - "--web.listen-address=:{{ $.Values.service.port }}"
             - "--web.telemetry-path=/metrics"

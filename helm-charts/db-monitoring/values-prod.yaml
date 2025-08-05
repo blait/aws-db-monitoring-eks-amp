@@ -74,9 +74,10 @@ postgresql-exporter:
 redis-exporter:
   enabled: true
   instances:
-    - name: elasticache-valkey-cluster # 이 이름은 redis-exporter/values.yaml의 인스턴스 이름과 일치해야 합니다.
-      endpoint: "" # deploy-monitoring.sh 스크립트가 VALKEY_ENDPOINT로 채울 부분입니다.
-      port: 6379 # Valkey 기본 포트
+    - name: elasticache-valkey-cluster
+      endpoint: ""
+      port: ""
+      enabled: true
   image:
     repository: oliver006/redis_exporter
     tag: v1.65.0 # 사용하고자 하는 버전 (redis-exporter/Chart.yaml의 appVersion과 일치)

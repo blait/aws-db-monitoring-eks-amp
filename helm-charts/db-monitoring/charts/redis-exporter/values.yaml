@@ -15,9 +15,9 @@ image:
   pullPolicy: IfNotPresent
 
 serviceAccount:
-  create: true
-  name: redis-exporter
-  annotations: {} #IRSA를 위한 어노테이션 필요
+  create: false
+  name: ""
+  annotations: {}
 
 resources:
   requests:
