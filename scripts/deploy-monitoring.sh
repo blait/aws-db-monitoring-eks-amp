@@ -96,15 +96,15 @@ deploy_monitoring() {
     local release_name="db-monitoring"
     local namespace="observability"
     local chart_path="helm-charts/db-monitoring"
-    local values_file="/tmp/db-monitoring-values-prod.yaml"
+    local values_file="/tmp/db-monitoring-values.yaml"
     
     print_status "Deploying monitoring stack with production configuration"
     
     # Create values file
     print_status "Creating production values file"
     
-    # Start with the prod values file
-    cp "helm-charts/db-monitoring/values-prod.yaml" "$values_file"
+    # Start with the standard values file
+    cp "helm-charts/db-monitoring/values.yaml" "$values_file"
     
     # Replace placeholders with actual values using the new subchart structure
     if [[ "$OSTYPE" == "darwin"* ]]; then

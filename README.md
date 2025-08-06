@@ -391,7 +391,6 @@ If you prefer manual control:
 # Install the monitoring stack
 helm install db-monitoring ./helm-charts/db-monitoring \
   --namespace observability \
-  --values ./helm-charts/db-monitoring/values-prod.yaml \
   --set amp.workspaceId="$AMP_WORKSPACE_ID" \
   --set amp.endpoint="$AMP_ENDPOINT" \
   --set adot.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$ADOT_ROLE_ARN" \
@@ -415,8 +414,7 @@ helm status db-monitoring -n observability
 
 # Upgrade deployment
 helm upgrade db-monitoring ./helm-charts/db-monitoring \
-  --namespace observability \
-  --values ./helm-charts/db-monitoring/values-prod.yaml
+  --namespace observability
 
 # Rollback if needed
 helm rollback db-monitoring 1 -n observability
@@ -494,7 +492,7 @@ Both dashboards include:
 
 4. **Helm deployment issues**: Check values file and template rendering
    ```bash
-   helm template db-monitoring ./helm-charts/db-monitoring --values ./helm-charts/db-monitoring/values-prod.yaml
+   helm template db-monitoring ./helm-charts/db-monitoring
    ```
 
 ### Debugging Commands
