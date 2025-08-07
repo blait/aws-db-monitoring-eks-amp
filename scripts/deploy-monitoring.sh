@@ -117,16 +117,28 @@ deploy_monitoring() {
             "$values_file"
         
         # Replace ALL empty endpoint fields with AMP endpoint first
+        # Get PostgreSQL cluster writer endpoint
+        POSTGRESQL_CLUSTER_ENDPOINT=$(aws rds describe-db-clusters \
+            --db-cluster-identifier integrated-db-monitoring-db-postgresqlcluster-i8bw9bb0bgnu \
+            --query 'DBClusters[0].Endpoint' \
+            --output text 2>/dev/null || echo "${POSTGRESQL_ENDPOINT1}")
+        
         sed -i '' "s|endpoint: \"\"|endpoint: \"${AMP_ENDPOINT}\"|g" "$values_file"
         
-        # Then fix the database endpoints - use primary instances for cluster monitoring
+        # Then fix the database endpoints - use cluster writer for PostgreSQL enterprise monitoring
         sed -i '' \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
-            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
+            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_CLUSTER_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
     else
+        # Get PostgreSQL cluster writer endpoint
+        POSTGRESQL_CLUSTER_ENDPOINT=$(aws rds describe-db-clusters \
+            --db-cluster-identifier integrated-db-monitoring-db-postgresqlcluster-i8bw9bb0bgnu \
+            --query 'DBClusters[0].Endpoint' \
+            --output text 2>/dev/null || echo "${POSTGRESQL_ENDPOINT1}")
+        
         # Linux sed syntax - use simpler patterns
         sed -i \
             -e "s|workspaceId: \"\"|workspaceId: \"${AMP_WORKSPACE_ID}\"|g" \
@@ -137,6 +149,14 @@ deploy_monitoring() {
         
         # Replace ALL empty endpoint fields with AMP endpoint first
         sed -i "s|endpoint: \"\"|endpoint: \"${AMP_ENDPOINT}\"|g" "$values_file"
+        
+        # Then fix the database endpoints - use cluster writer for PostgreSQL enterprise monitoring
+        sed -i \
+            -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
+            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_CLUSTER_ENDPOINT}\"|" \
+            -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
+            -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
+            "$values_file"
         
         # Then fix the database endpoints - use primary instances for cluster monitoring
         sed -i \

@@ -50,12 +50,12 @@ mysql-exporter:
       cpu: 500m
       memory: 512Mi
 
-# PostgreSQL Exporter configuration - monitor primary instance (represents cluster)
+# PostgreSQL Exporter configuration - monitor cluster writer for enterprise metrics
 postgresql-exporter:
   enabled: true
   instances:
     - name: postgresql-cluster
-      endpoint: ""  # Will be set to primary PostgreSQL endpoint (instance-1)
+      endpoint: ""  # Will be set to PostgreSQL cluster writer endpoint
       port: 5432
       username: root
       password: rootroot
@@ -65,9 +65,10 @@ postgresql-exporter:
   resources:
     requests:
       cpu: 200m
-      memory: 256Mi
+      memory: 512Mi
     limits:
       cpu: 500m
+      memory: 1Gi
       memory: 512Mi
 
 # redis-exporter configuration

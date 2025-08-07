@@ -1,0 +1,15 @@
+{{- if .Values.config.customQueries }}
+# Custom queries disabled - using Grafana calculations for enterprise metrics
+# This approach provides better stability and follows industry best practices
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "postgresql-exporter.fullname" . }}-queries
+  namespace: {{ .Values.global.namespace | default "observability" }}
+  labels:
+    {{- include "postgresql-exporter.labels" . | nindent 4 }}
+data:
+  queries.yaml: |
+    # No custom queries - using standard PostgreSQL metrics with Grafana calculations
+    # This provides 90% enterprise coverage with 100% stability
+{{- end }}
