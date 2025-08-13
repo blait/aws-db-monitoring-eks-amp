@@ -279,12 +279,33 @@ Resources:
           # Install performance testing tools
           sudo dnf install -y git python3 python3-pip htop iotop
 
-          # Install sysbench for MySQL performance testing
-          curl -s https://packagecloud.io/install/repositories/akopytov/sysbench/script.rpm.sh | bash
-          sudo dnf install -y sysbench
+          # Install MySQL sysbench
+          echo "=== Installing dependencies for sysbench build ==="
+          sudo dnf groupinstall -y "Development Tools"
+          sudo dnf install -y git automake libtool pkgconfig make gcc-c++ \
+              mariadb-connector-c-devel libaio-devel \
+              readline-devel libcurl-devel wget
 
-          # Install pgbench (comes with PostgreSQL)
-          # Already included with postgresql15 package
+          echo "=== Cloning sysbench repository ==="
+          cd /tmp
+          if [ -d sysbench ]; then
+              sudo rm -rf sysbench
+          fi
+          git clone https://github.com/akopytov/sysbench.git
+          cd sysbench
+
+          echo "=== Building sysbench ==="
+          ./autogen.sh
+          ./configure
+          make -j$(nproc)
+          sudo make install
+
+          echo "=== Verifying sysbench installation ==="
+          sysbench --version
+          echo "=== sysbench installation completed ==="
+
+          # Install pgbench (PostgreSQL benchmark tool)
+          sudo dnf install -y postgresql15 postgresql15-contrib
 
           # Create performance test scripts directory
           mkdir -p /home/ec2-user/performance-tests
