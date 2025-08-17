@@ -467,10 +467,13 @@ Both dashboards include:
 **PostgreSQL Metrics:**
 - Active connections and backends
 - Transaction commit/rollback rates
-- Cache hit ratios
+- Cache hit ratios (table and index level)
 - Row-level activity (inserts, updates, deletes)
-- Lock monitoring
-- Database size growth
+- Lock monitoring and conflict detection
+- Database and table sizes
+- Index usage and efficiency
+- Vacuum/autovacuum operations
+- Long-running transaction detection
 
 ### Alerting Best Practices
 

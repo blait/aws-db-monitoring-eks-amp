@@ -1,6 +1,6 @@
 {{- if .Values.config.customQueries }}
-# Custom queries disabled - using Grafana calculations for enterprise metrics
-# This approach provides better stability and follows industry best practices
+# Custom queries are deprecated in postgres_exporter
+# Using built-in collectors instead for better stability and support
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,6 +10,5 @@ metadata:
     {{- include "postgresql-exporter.labels" . | nindent 4 }}
 data:
   queries.yaml: |
-    # No custom queries - using standard PostgreSQL metrics with Grafana calculations
-    # This provides 90% enterprise coverage with 100% stability
+    # Empty - using built-in collectors
 {{- end }}

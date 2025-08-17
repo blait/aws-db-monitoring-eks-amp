@@ -45,7 +45,7 @@ config:
   # Include specific databases (empty = all discovered)
   includeDatabases: []
   
-  # Enable custom queries for enterprise metrics
+  # Use built-in collectors (custom queries are deprecated)
   customQueries: false
   
   # Disable problematic collectors for Aurora
@@ -53,9 +53,9 @@ config:
     - wal
     - replication
   
-  # Enhanced metric collection settings
+  # Enhanced metric collection settings - using built-in collectors
   collectors:
-    # Enable standard collectors that work with Aurora
+    # Enable all standard collectors that work with Aurora
     pg_stat_database: true
     pg_stat_user_tables: true
     pg_stat_user_indexes: true
@@ -65,8 +65,9 @@ config:
     pg_stat_bgwriter: true
     pg_stat_archiver: true
     pg_locks: true
+    pg_database: true
     
-    # Disable problematic collectors
+    # Disable problematic collectors for Aurora
     pg_stat_replication: false
     pg_stat_wal_receiver: false
     
