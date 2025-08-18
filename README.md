@@ -353,6 +353,17 @@ echo "Grafana Role ARN: $GRAFANA_ROLE_ARN"
 8. Click "Save & test"
 9. You should see a "Data source is working" message
 
+### Step 5: Configure CloudWatch as a data source in AMG
+
+1. Click "Add data source" again
+2. Select "CloudWatch"
+3. Configure the data source:
+   - Name: CloudWatch
+   - Authentication Provider: AWS IAM Roles for Service Accounts
+   - Default Region: Select your AWS region
+4. Click "Save & test"
+5. You should see a "Data source is working" message
+
 ### Step 5: Store the AMG workspace ID as an environment variable
 
 For use in later modules, store the AMG workspace ID as an environment variable:
@@ -433,8 +444,10 @@ helm uninstall db-monitoring -n observability
 
 ### Import PostgreSQL Dashboard
 
-1. Import the new PostgreSQL dashboard from `dashboards/postgresql.json`
-2. Configure data source as "AMP"
+1. Import the comprehensive PostgreSQL dashboard from `dashboards/postgresql.json`
+2. Configure data sources:
+   - **AMP (Prometheus)**: Application-level metrics, table performance, Performance Insights
+   - **CloudWatch**: AWS infrastructure metrics (CPU, Memory, Network I/O)
 3. The dashboard includes:
    - Active connections monitoring
    - Transaction rate tracking
@@ -443,6 +456,9 @@ helm uninstall db-monitoring -n observability
    - Write activity monitoring
    - Lock monitoring
    - Database size tracking
+   - Table performance metrics
+   - **AWS Infrastructure metrics** (CPU, Memory, Connections)
+   - **Performance Insights** (Database Load, Wait Events) via AMP
 
 ### Dashboard Features
 
