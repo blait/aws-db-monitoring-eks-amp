@@ -46,7 +46,7 @@ collectors:
   info_schema_tablestats: true
   info_schema_schemastats: true
   info_schema_userstats: true
-  perf_schema_eventsstatements: false  # Disable - can be resource intensive
+  perf_schema_eventsstatements: true  # Enable - to get Error Queries and No Index Used Queries
   perf_schema_file_events: false  # Disable - can be resource intensive
   perf_schema_indexiowaits: false  # Disable - can be resource intensive
   perf_schema_tableiowaits: false  # Disable - can be resource intensive
