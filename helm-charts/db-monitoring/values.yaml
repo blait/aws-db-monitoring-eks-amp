@@ -69,6 +69,24 @@ postgresql-exporter:
     limits:
       cpu: 500m
       memory: 1Gi
+
+# SQL Server Exporter configuration
+sql-exporter:
+  enabled: true
+  endpoint: ""  # Will be set to SQL Server endpoint
+  port: 1433
+  username: admin
+  password: AdminAdmin123!
+  image:
+    repository: burningalchemist/sql_exporter
+    tag: 0.18.2
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
       memory: 512Mi
 
 # redis-exporter configuration

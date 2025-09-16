@@ -41,6 +41,7 @@ check_env_vars() {
         "MYSQL_ENDPOINT2"
         "POSTGRESQL_ENDPOINT1"
         "POSTGRESQL_ENDPOINT2"
+        "SQLSERVER_ENDPOINT"
         "ELASTICACHE_VALKEY_ENDPOINT"
         "ELASTICACHE_VALKEY_PORT"
     )
@@ -129,6 +130,7 @@ deploy_monitoring() {
         sed -i '' \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_CLUSTER_ENDPOINT}\"|" \
+            -e "/sql-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${SQLSERVER_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
@@ -154,6 +156,7 @@ deploy_monitoring() {
         sed -i \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_CLUSTER_ENDPOINT}\"|" \
+            -e "/sql-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${SQLSERVER_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
@@ -299,6 +302,7 @@ verify_deployment() {
     echo "• ADOT Collector: 500m CPU, 1Gi RAM (requests) / 1000m CPU, 2Gi RAM (limits)"
     echo "• MySQL Exporters: 200m CPU, 256Mi RAM (requests) / 500m CPU, 512Mi RAM (limits)"
     echo "• PostgreSQL Exporters: 200m CPU, 256Mi RAM (requests) / 500m CPU, 512Mi RAM (limits)"
+    echo "• SQL Server Exporter: 200m CPU, 256Mi RAM (requests) / 500m CPU, 512Mi RAM (limits)"
     echo "• Redis/Valkey Exporters: 100m CPU, 128Mi RAM (requests) / 200m CPU, 256Mi RAM (limits)"
     echo "• Performance Insights Exporter: 100m CPU, 128Mi RAM (requests) / 200m CPU, 256Mi RAM (limits)"
     echo "• Scrape Interval: 15 seconds (high-frequency monitoring)"
@@ -312,11 +316,12 @@ verify_deployment() {
     echo "1. Check ADOT Collector logs: kubectl logs -n $namespace -l app.kubernetes.io/name=adot-collector"
     echo "2. Check MySQL exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=mysql-exporter"
     echo "3. Check PostgreSQL exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=postgresql-exporter"
-    echo "4. Check Redis/Valkey exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=redis-exporter"
-    echo "5. Check Performance Insights exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=pi-exporter"
-    echo "6. Configure CloudWatch data source in AMG for infrastructure metrics"
-    echo "7. Access Grafana dashboard using your AMG workspace URL"
-    echo "8. Import the dashboard JSON files from the dashboards/ directory"
+    echo "4. Check SQL Server exporter logs: kubectl logs -n $namespace -l app=sql-exporter"
+    echo "5. Check Redis/Valkey exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=redis-exporter"
+    echo "6. Check Performance Insights exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=pi-exporter"
+    echo "7. Configure CloudWatch data source in AMG for infrastructure metrics"
+    echo "8. Access Grafana dashboard using your AMG workspace URL"
+    echo "9. Import the dashboard JSON files from the dashboards/ directory"
 }
 
 # Function to show usage

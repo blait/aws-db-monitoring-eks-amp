@@ -52,6 +52,17 @@ Parameters:
     NoEcho: true
     Description: Master password for Aurora PostgreSQL cluster
 
+  SQLServerMasterUsername:
+    Type: String
+    Default: admin
+    Description: Master username for RDS SQL Server instance
+
+  SQLServerMasterPassword:
+    Type: String
+    Default: AdminAdmin123!
+    NoEcho: true
+    Description: Master password for RDS SQL Server instance (must meet complexity requirements)
+
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
@@ -253,6 +264,68 @@ Resources:
           Value: !Sub ${EnvironmentName}-aurora-postgresql-2
 
   ##############################################################################
+  # RDS SQL Server
+  ##############################################################################
+  SQLServerDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for RDS SQL Server instance
+      SubnetIds: !Ref DatabaseSubnets
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-sqlserver-subnet-group
+
+  SQLServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS SQL Server instance
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
+          CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 1
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
+          CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 2
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
+          CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
+          Description: Access from private subnet 3
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+          Description: Access from bastion host
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-sqlserver-sg
+
+  SQLServerInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: sqlserver-ex
+      EngineVersion: 15.00.4236.7.v1
+      DBInstanceClass: db.t3.small
+      AllocatedStorage: 20
+      StorageType: gp2
+      MasterUsername: !Ref SQLServerMasterUsername
+      MasterUserPassword: !Ref SQLServerMasterPassword
+      DBSubnetGroupName: !Ref SQLServerDBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref SQLServerSecurityGroup
+      Port: 1433
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-sqlserver
+
+  ##############################################################################
   # Bastion Host
   ##############################################################################
   BastionHost:
@@ -275,6 +348,12 @@ Resources:
 
           # Install PostgreSQL client
           sudo dnf install -y postgresql15
+
+          # Install SQL Server client tools
+          curl https://packages.microsoft.com/config/rhel/8/prod.repo | sudo tee /etc/yum.repos.d/msprod.repo
+          sudo dnf install -y mssql-tools18 unixODBC-devel
+          echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bash_profile
+          source ~/.bash_profile
 
           # Install performance testing tools
           sudo dnf install -y git python3 python3-pip htop iotop
@@ -363,6 +442,65 @@ Resources:
           echo "MySQL Performance Test Completed!"
           EOF
 
+          # Create SQL Server performance test script
+          cat > /home/ec2-user/performance-tests/sqlserver-test.sh << 'EOF'
+          #!/bin/bash
+
+          # SQL Server Performance Test Script
+          SQLSERVER_HOST=${SQLServerInstance.Endpoint.Address}
+          SQLSERVER_USER=${SQLServerMasterUsername}
+          SQLSERVER_PASS=${SQLServerMasterPassword}
+          SQLSERVER_DB=master
+
+          echo "Starting SQL Server Performance Test..."
+          echo "SQL Server Host: $SQLSERVER_HOST"
+
+          # Test connection
+          /opt/mssql-tools18/bin/sqlcmd -S $SQLSERVER_HOST -U $SQLSERVER_USER -P $SQLSERVER_PASS -C -Q "SELECT @@VERSION"
+
+          # Create test database and table
+          /opt/mssql-tools18/bin/sqlcmd -S $SQLSERVER_HOST -U $SQLSERVER_USER -P $SQLSERVER_PASS -C -Q "
+          IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'TestDB')
+          BEGIN
+              CREATE DATABASE TestDB;
+          END
+          "
+
+          /opt/mssql-tools18/bin/sqlcmd -S $SQLSERVER_HOST -U $SQLSERVER_USER -P $SQLSERVER_PASS -d TestDB -C -Q "
+          IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='TestTable' AND xtype='U')
+          BEGIN
+              CREATE TABLE TestTable (
+                  ID int IDENTITY(1,1) PRIMARY KEY,
+                  Name nvarchar(50),
+                  Value int,
+                  CreatedDate datetime DEFAULT GETDATE()
+              );
+          END
+          "
+
+          # Insert test data
+          echo "Inserting test data..."
+          for i in {1..1000}; do
+              /opt/mssql-tools18/bin/sqlcmd -S $SQLSERVER_HOST -U $SQLSERVER_USER -P $SQLSERVER_PASS -d TestDB -C -Q "
+              INSERT INTO TestTable (Name, Value) VALUES ('Test$i', $i);
+              " > /dev/null 2>&1
+          done
+
+          # Run performance test queries
+          echo "Running SQL Server performance test..."
+          for i in {1..100}; do
+              /opt/mssql-tools18/bin/sqlcmd -S $SQLSERVER_HOST -U $SQLSERVER_USER -P $SQLSERVER_PASS -d TestDB -C -Q "
+              SELECT COUNT(*) FROM TestTable WHERE Value > RAND() * 1000;
+              UPDATE TestTable SET Value = Value + 1 WHERE ID = $((RANDOM % 1000 + 1));
+              " > /dev/null 2>&1
+              if [ $((i % 10)) -eq 0 ]; then
+                  echo "Completed $i/100 test iterations"
+              fi
+          done
+
+          echo "SQL Server Performance Test Completed!"
+          EOF
+
           # Create PostgreSQL performance test script
           cat > /home/ec2-user/performance-tests/postgresql-test.sh << 'EOF'
           #!/bin/bash
@@ -420,6 +558,14 @@ Resources:
           /home/ec2-user/performance-tests/postgresql-test.sh
 
           echo ""
+          echo "=== Waiting 60 seconds before SQL Server test ==="
+          sleep 60
+
+          echo ""
+          echo "=== SQL Server Performance Test ==="
+          /home/ec2-user/performance-tests/sqlserver-test.sh
+
+          echo ""
           echo "=== All Performance Tests Completed ==="
           echo "Timestamp: $(date)"
           EOF
@@ -436,8 +582,9 @@ Resources:
           ## Available Scripts:
 
           1. **mysql-test.sh** - Tests MySQL performance using sysbench
-          2. **postgresql-test.sh** - Tests PostgreSQL performance using pgbench  
-          3. **run-all-tests.sh** - Runs both tests sequentially
+          2. **postgresql-test.sh** - Tests PostgreSQL performance using pgbench
+          3. **sqlserver-test.sh** - Tests SQL Server performance using custom queries
+          4. **run-all-tests.sh** - Runs all tests sequentially
 
           ## Usage:
 
@@ -445,6 +592,7 @@ Resources:
           # Run individual tests
           ./mysql-test.sh
           ./postgresql-test.sh
+          ./sqlserver-test.sh
 
           # Run all tests
           ./run-all-tests.sh
@@ -454,6 +602,7 @@ Resources:
 
           - **MySQL Test**: Uses sysbench with OLTP read/write workload, 4 tables, 100K rows each, 16 threads, 5 minutes
           - **PostgreSQL Test**: Uses pgbench with default workload, scale factor 100, 16 clients, 4 jobs, 5 minutes
+          - **SQL Server Test**: Uses custom queries with INSERT/SELECT/UPDATE operations, 1000 rows, 100 iterations
 
           ## Monitoring:
 
@@ -565,3 +714,15 @@ Outputs:
     Value: !Ref KeyPairName
     Export:
       Name: !Sub ${AWS::StackName}-KeyPairName
+
+  SQLServerInstanceEndpoint:
+    Description: The endpoint for the RDS SQL Server instance
+    Value: !GetAtt SQLServerInstance.Endpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-SQLServerInstanceEndpoint
+
+  SQLServerInstancePort:
+    Description: The port for the RDS SQL Server instance
+    Value: 1433
+    Export:
+      Name: !Sub ${AWS::StackName}-SQLServerInstancePort

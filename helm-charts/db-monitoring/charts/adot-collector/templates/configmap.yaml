@@ -136,21 +136,46 @@ data:
                 job: redis-exporters
                 kubernetes_namespace: {{ .Values.global.namespace | default "observability" }}
 
+          # SQL Server Exporter - Static configuration
+          - job_name: sql-exporter
+            static_configs:
+            - targets:
+              - sql-exporter.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9399
+              labels:
+                job: sql-exporter
+                kubernetes_namespace: {{ .Values.global.namespace | default "observability" }}
+
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 512
+
     exporters:
       prometheusremotewrite:
         endpoint: {{ .Values.amp.endpoint }}
+        timeout: 60s
         auth:
           authenticator: sigv4auth
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
 
     extensions:
       health_check:
         endpoint: 0.0.0.0:13133
       sigv4auth:
         region: {{ .Values.amp.region | default .Values.global.region }}
+        service: aps
 
     service:
       extensions: [health_check, sigv4auth]
       pipelines:
         metrics:
           receivers: [prometheus]
+          processors: [batch]
           exporters: [prometheusremotewrite]
+      telemetry:
+        logs:
+          level: info

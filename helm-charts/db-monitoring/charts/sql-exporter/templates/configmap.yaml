@@ -1,0 +1,67 @@
+{{- if .Values.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sql-exporter.fullname" . }}-config
+  labels:
+    {{- include "sql-exporter.labels" . | nindent 4 }}
+data:
+  config.yml: |
+    global:
+      scrape_timeout: 10s
+      scrape_timeout_offset: 500ms
+      min_interval: 0s
+      max_connections: 3
+      max_idle_connections: 3
+    
+    target_groups:
+      - name: "mssql"
+        targets:
+          - "{{ .Values.endpoint }}:{{ .Values.port }}"
+        collectors:
+          - mssql_standard
+        data_source_name: 'sqlserver://{{ .Values.username }}:{{ .Values.password }}@{{ .Values.endpoint }}:{{ .Values.port }}?database=master&connection+timeout=30'
+    
+    collectors:
+    - collector_name: mssql_standard
+      metrics:
+      - metric_name: mssql_up
+        type: gauge
+        help: 'Server up'
+        key_labels:
+          - "server"
+        values: ["up"]
+        query: |
+          SELECT 
+            @@SERVERNAME as server,
+            1 as up
+      
+      - metric_name: mssql_connections
+        type: gauge
+        help: 'Number of active connections'
+        key_labels:
+          - "server"
+        values: ["connections"]
+        query: |
+          SELECT 
+            @@SERVERNAME as server,
+            COUNT(*) as connections
+          FROM sys.dm_exec_sessions 
+          WHERE is_user_process = 1
+      
+      - metric_name: mssql_database_size
+        type: gauge
+        help: 'Database size in bytes'
+        key_labels:
+          - "server"
+          - "database"
+        values: ["size_bytes"]
+        query: |
+          SELECT 
+            @@SERVERNAME as server,
+            name as database,
+            SUM(size * 8192) as size_bytes
+          FROM sys.master_files mf
+          INNER JOIN sys.databases d ON mf.database_id = d.database_id
+          GROUP BY name
+{{- end }}
