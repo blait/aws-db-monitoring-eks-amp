@@ -147,7 +147,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "pg_up{instance=~\"$instance\"} * 3600",
+          "expr": "(time() - pg_postmaster_start_time_seconds{instance=~\"$instance\"}) or on() vector(3600)",
           "format": "time_series",
           "interval": "1m",
           "intervalFactor": 1,
@@ -216,7 +216,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "sum(rate(pg_stat_database_xact_commit_total{instance=~\"$instance\"}[5m])) + sum(rate(pg_stat_database_xact_rollback_total{instance=~\"$instance\"}[5m]))",
+          "expr": "sum(rate(pg_stat_database_xact_commit_total{instance=~\"$instance\"}[$interval])) + sum(rate(pg_stat_database_xact_rollback_total{instance=~\"$instance\"}[$interval]))",
           "format": "time_series",
           "interval": "1m",
           "intervalFactor": 1,
@@ -299,7 +299,242 @@
       "title": "Buffer Cache Hit Ratio",
       "type": "stat"
     },
-
+    {
+      "datasource": "$cloudwatch_datasource",
+      "description": "**CPU Utilization**\n\nAWS RDS CPU utilization percentage showing the compute resource usage of the PostgreSQL instance.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "rgba(50, 172, 45, 0.97)",
+                "value": null
+              },
+              {
+                "color": "rgba(237, 129, 40, 0.89)",
+                "value": 70
+              },
+              {
+                "color": "rgba(245, 54, 54, 0.9)",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 8,
+        "x": 0,
+        "y": 4
+      },
+      "id": 991,
+      "interval": "1m",
+      "links": [],
+      "maxDataPoints": 100,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.5",
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "$cloudwatch_datasource"
+          },
+          "dimensions": {
+            "DBInstanceIdentifier": "$instance"
+          },
+          "expression": "",
+          "id": "",
+          "matchExact": true,
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/RDS",
+          "period": "",
+          "refId": "A",
+          "region": "default",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ],
+      "title": "CPU Utilization",
+      "type": "stat"
+    },
+    {
+      "datasource": "$cloudwatch_datasource",
+      "description": "**Freeable Memory**\n\nAmount of available RAM in bytes for the PostgreSQL RDS instance.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "rgba(245, 54, 54, 0.9)",
+                "value": null
+              },
+              {
+                "color": "rgba(237, 129, 40, 0.89)",
+                "value": 1073741824
+              },
+              {
+                "color": "rgba(50, 172, 45, 0.97)",
+                "value": 2147483648
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 8,
+        "x": 8,
+        "y": 4
+      },
+      "id": 992,
+      "interval": "1m",
+      "links": [],
+      "maxDataPoints": 100,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.5",
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "$cloudwatch_datasource"
+          },
+          "dimensions": {
+            "DBInstanceIdentifier": "$instance"
+          },
+          "expression": "",
+          "id": "",
+          "matchExact": true,
+          "metricName": "FreeableMemory",
+          "namespace": "AWS/RDS",
+          "period": "",
+          "refId": "A",
+          "region": "default",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ],
+      "title": "Freeable Memory",
+      "type": "stat"
+    },
+    {
+      "datasource": "$cloudwatch_datasource",
+      "description": "**Network Throughput**\n\nNetwork receive and transmit throughput for the PostgreSQL RDS instance.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "rgba(50, 172, 45, 0.97)",
+                "value": null
+              },
+              {
+                "color": "rgba(237, 129, 40, 0.89)",
+                "value": 10485760
+              },
+              {
+                "color": "rgba(245, 54, 54, 0.9)",
+                "value": 52428800
+              }
+            ]
+          },
+          "unit": "binBps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
+      "id": 993,
+      "interval": "1m",
+      "links": [],
+      "maxDataPoints": 100,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.5",
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "$cloudwatch_datasource"
+          },
+          "dimensions": {
+            "DBInstanceIdentifier": "$instance"
+          },
+          "expression": "",
+          "id": "",
+          "matchExact": true,
+          "metricName": "NetworkReceiveThroughput",
+          "namespace": "AWS/RDS",
+          "period": "",
+          "refId": "A",
+          "region": "default",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ],
+      "title": "Network Throughput",
+      "type": "stat"
+    },
     {
       "collapsed": false,
       "datasource": "$datasource",
@@ -307,7 +542,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 4
+        "y": 7
       },
       "id": 2,
       "panels": [],
@@ -372,7 +607,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 8
       },
       "id": 998,
       "options": {
@@ -392,7 +627,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "up{job=\"postgres\"} or on() vector(0)",
+          "expr": "up{job=~\".*postgres.*\"} or on() vector(0)",
           "format": "table",
           "instant": true,
           "legendFormat": "PostgreSQL Exporter",
@@ -402,7 +637,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "count(pg_stat_statements_calls_total) > 0 or on() vector(0)",
+          "expr": "count(pg_stat_statements_calls_total{instance=~\"$instance\"}) or on() vector(0)",
           "format": "table",
           "instant": true,
           "legendFormat": "pg_stat_statements Extension",
@@ -2907,6 +3142,7 @@
           "refId": "A"
         }
       ],
+
       "title": "Database Activity",
       "type": "row"
     },
@@ -3527,7 +3763,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 97
+        "y": 103
       },
       "id": 101,
       "options": {
@@ -3553,7 +3789,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "pg_stat_user_tables_seq_scan_total{instance=~\"$instance\", datname=~\"$database\"}",
+          "expr": "pg_stat_user_tables_seq_scan_total{instance=~\"$instance\"} or pg_stat_all_tables_seq_scan_total{instance=~\"$instance\"}",
           "format": "table",
           "instant": true,
           "intervalFactor": 1,
@@ -3564,7 +3800,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "pg_stat_user_tables_seq_tup_read_total{instance=~\"$instance\", datname=~\"$database\"}",
+          "expr": "pg_stat_user_tables_seq_tup_read_total{instance=~\"$instance\"} or pg_stat_all_tables_seq_tup_read_total{instance=~\"$instance\"}",
           "format": "table",
           "instant": true,
           "intervalFactor": 1,
@@ -3575,7 +3811,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "pg_stat_user_tables_idx_scan_total{instance=~\"$instance\", datname=~\"$database\"}",
+          "expr": "pg_stat_user_tables_idx_scan_total{instance=~\"$instance\"} or pg_stat_all_tables_idx_scan_total{instance=~\"$instance\"}",
           "format": "table",
           "instant": true,
           "intervalFactor": 1,
@@ -3586,7 +3822,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "pg_stat_user_tables_idx_tup_fetch_total{instance=~\"$instance\", datname=~\"$database\"}",
+          "expr": "pg_stat_user_tables_idx_tup_fetch_total{instance=~\"$instance\"} or pg_stat_all_tables_idx_tup_fetch_total{instance=~\"$instance\"}",
           "format": "table",
           "instant": true,
           "intervalFactor": 1,
