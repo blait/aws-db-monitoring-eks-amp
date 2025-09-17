@@ -110,7 +110,7 @@ export PRIVATE_SUBNET_CIDRS=$(aws cloudformation describe-stacks \
 
 # Deploy database stack
 aws cloudformation create-stack \
-  --stack-name ${WORKSHOP_NAME}-database \
+  --stack-name ${WORKSHOP_NAME}-db \
   --template-body file://database-stack.yaml \
   --parameters \
     ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
@@ -121,7 +121,10 @@ aws cloudformation create-stack \
     ParameterKey=MySQLMasterUsername,ParameterValue=admin \
     ParameterKey=MySQLMasterPassword,ParameterValue=adminadmin \
     ParameterKey=PostgreSQLMasterUsername,ParameterValue=root \
-    ParameterKey=PostgreSQLMasterPassword,ParameterValue=rootroot 
+    ParameterKey=PostgreSQLMasterPassword,ParameterValue=rootroot \
+    ParameterKey=SQLServerMasterUsername,ParameterValue=admin \
+    ParameterKey=SQLServerMasterPassword,ParameterValue=AdminAdmin123! \
+  --capabilities CAPABILITY_IAM 
 
 
 # Wait for completion (15-20 minutes)
@@ -147,6 +150,11 @@ export POSTGRESQL_ENDPOINT1=$(aws cloudformation describe-stacks \
 export POSTGRESQL_ENDPOINT2=$(aws cloudformation describe-stacks \
   --stack-name ${WORKSHOP_NAME}-db \
   --query 'Stacks[0].Outputs[?OutputKey==`PostgreSQLInstance2Endpoint`].OutputValue' \
+  --output text)
+
+export SQLSERVER_ENDPOINT=$(aws cloudformation describe-stacks \
+  --stack-name ${WORKSHOP_NAME}-db \
+  --query 'Stacks[0].Outputs[?OutputKey==`SQLServerInstanceEndpoint`].OutputValue' \
   --output text)
   
 # Deploy cache stack
@@ -391,6 +399,7 @@ The deployment script will:
 - ✅ Check Helm and kubectl connectivity  
 - ✅ Create production-grade configuration
 - ✅ Deploy all components atomically with enhanced resources
+- ✅ Deploy SQL Server exporter for RDS SQL Server monitoring
 - ✅ Verify deployment status
 - ✅ Provide helpful next steps
 
@@ -405,10 +414,11 @@ helm install db-monitoring ./helm-charts/db-monitoring \
   --set amp.workspaceId="$AMP_WORKSPACE_ID" \
   --set amp.endpoint="$AMP_ENDPOINT" \
   --set adot.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$ADOT_ROLE_ARN" \
-  --set mysql.instances[0].endpoint="$MYSQL_ENDPOINT1" \
-  --set mysql.instances[1].endpoint="$MYSQL_ENDPOINT2" \
-  --set postgresql.instances[0].endpoint="$POSTGRESQL_ENDPOINT1" \
-  --set postgresql.instances[1].endpoint="$POSTGRESQL_ENDPOINT2" \
+  --set adot.amp.endpoint="$AMP_ENDPOINT" \
+  --set adot.amp.workspaceId="$AMP_WORKSPACE_ID" \
+  --set mysql-exporter.instances[0].endpoint="$MYSQL_ENDPOINT1" \
+  --set postgresql-exporter.instances[0].endpoint="$POSTGRESQL_ENDPOINT1" \
+  --set sqlExporter.endpoint="$SQLSERVER_ENDPOINT" \
   --create-namespace \
   --wait
 
@@ -491,6 +501,12 @@ Both dashboards include:
 - Vacuum/autovacuum operations
 - Long-running transaction detection
 
+**SQL Server Metrics:**
+- Active connections and sessions
+- Database size monitoring
+- Server availability status
+- Connection performance metrics
+
 ### Alerting Best Practices
 
 1. **Set appropriate thresholds** based on baseline performance
@@ -544,6 +560,7 @@ eksctl delete cluster --name ${WORKSHOP_NAME}-eks --region ${AWS_REGION}
 
 # Delete CloudFormation stacks
 aws cloudformation delete-stack --stack-name ${WORKSHOP_NAME}-db
+aws cloudformation delete-stack --stack-name ${WORKSHOP_NAME}-cache
 aws cloudformation delete-stack --stack-name ${WORKSHOP_NAME}-network
 
 # Delete AMP workspace

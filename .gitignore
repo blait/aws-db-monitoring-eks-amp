@@ -4,3 +4,5 @@ helm-charts/*/Chart.lock
 helm-charts/*/charts/*.tgz
 helm-charts/*/charts/pi-exporter/
 helm-charts/*/charts/redis-exporter/
+*-resolved.yaml
+adot-trust-policy.json 

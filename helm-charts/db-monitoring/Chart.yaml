@@ -38,3 +38,6 @@ dependencies:
     version: "1.0.0"
     repository: "file://./charts/pi-exporter"
     condition: pi-exporter.enabled
+  - name: sql-exporter
+    version: "0.1.0"
+    condition: sql-exporter.enabled

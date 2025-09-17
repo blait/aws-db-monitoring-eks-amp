@@ -167,6 +167,14 @@ data:
                 job: postgresql-exporters
                 kubernetes_namespace: observability
 
+          - job_name: sql-exporter
+            static_configs:
+            - targets:
+              - sql-exporter.observability.svc.cluster.local:9399
+              labels:
+                job: sql-exporter
+                kubernetes_namespace: observability
+
     exporters:
       prometheusremotewrite:
         endpoint: ${AMP_ENDPOINT}
