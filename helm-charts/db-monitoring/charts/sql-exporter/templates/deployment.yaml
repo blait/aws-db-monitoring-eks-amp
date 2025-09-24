@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "sql-exporter.fullname" . }}
+  name: sql-exporter
   labels:
     {{- include "sql-exporter.labels" . | nindent 4 }}
 spec:
