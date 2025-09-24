@@ -16,6 +16,8 @@ amp:
 adot-collector:
   enabled: true
   serviceAccount:
+    create: true
+    name: adot-collector
     annotations:
       eks.amazonaws.com/role-arn: ""
   resources:
@@ -116,20 +118,20 @@ redis-exporter:
       prometheus.io/port: "9121"
 
 # Performance Insights Exporter for AMP
-pi-exporter:
-  enabled: true
-  rdsInstances:
-    - instanceId: "${POSTGRESQL_ENDPOINT1}"
-      region: "${AWS_REGION}"
-    - instanceId: "${POSTGRESQL_ENDPOINT2}" 
-      region: "${AWS_REGION}"
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
+# pi-exporter:
+#   enabled: true
+#   rdsInstances:
+#     - instanceId: "${POSTGRESQL_ENDPOINT1}"
+#       region: "${AWS_REGION}"
+#     - instanceId: "${POSTGRESQL_ENDPOINT2}" 
+#       region: "${AWS_REGION}"
+#   resources:
+#     requests:
+#       cpu: 100m
+#       memory: 128Mi
+#     limits:
+#       cpu: 200m
+#       memory: 256Mi
 
 # CloudWatch integration for AWS infrastructure metrics only
 cloudwatch:

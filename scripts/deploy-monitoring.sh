@@ -124,16 +124,17 @@ deploy_monitoring() {
             --query 'DBClusters[0].Endpoint' \
             --output text 2>/dev/null || echo "${POSTGRESQL_ENDPOINT1}")
         
-        sed -i '' "s|endpoint: \"\"|endpoint: \"${AMP_ENDPOINT}\"|g" "$values_file"
-        
-        # Then fix the database endpoints - use cluster writer for PostgreSQL enterprise monitoring
+        # First fix specific database endpoints before global replacement
         sed -i '' \
-            -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
-            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_CLUSTER_ENDPOINT}\"|" \
-            -e "/sql-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${SQLSERVER_ENDPOINT}\"|" \
-            -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
+            -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
+            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"\"|endpoint: \"${POSTGRESQL_CLUSTER_ENDPOINT}\"|" \
+            -e "/sql-exporter:/,/endpoint:/ s|endpoint: \"\"|endpoint: \"${SQLSERVER_ENDPOINT}\"|" \
+            -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
+        
+        # Then replace remaining empty endpoints with AMP endpoint
+        sed -i '' "s|endpoint: \"\"|endpoint: \"${AMP_ENDPOINT}\"|g" "$values_file"
     else
         # Get PostgreSQL cluster writer endpoint
         POSTGRESQL_CLUSTER_ENDPOINT=$(aws rds describe-db-clusters \
@@ -149,22 +150,23 @@ deploy_monitoring() {
             -e "s|region: us-east-1|region: ${AWS_REGION}|g" \
             "$values_file"
         
-        # Replace ALL empty endpoint fields with AMP endpoint first
-        sed -i "s|endpoint: \"\"|endpoint: \"${AMP_ENDPOINT}\"|g" "$values_file"
-        
-        # Then fix the database endpoints - use cluster writer for PostgreSQL enterprise monitoring
+        # First fix specific database endpoints before global replacement
         sed -i \
-            -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
-            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_CLUSTER_ENDPOINT}\"|" \
-            -e "/sql-exporter:/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${SQLSERVER_ENDPOINT}\"|" \
-            -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
+            -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
+            -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"\"|endpoint: \"${POSTGRESQL_CLUSTER_ENDPOINT}\"|" \
+            -e "/sql-exporter:/,/endpoint:/ s|endpoint: \"\"|endpoint: \"${SQLSERVER_ENDPOINT}\"|" \
+            -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
+        
+        # Then replace remaining empty endpoints with AMP endpoint
+        sed -i "s|endpoint: \"\"|endpoint: \"${AMP_ENDPOINT}\"|g" "$values_file"
         
         # Then fix the database endpoints - use primary instances for cluster monitoring
         sed -i \
             -e "/mysql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${MYSQL_ENDPOINT1}\"|" \
             -e "/postgresql-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${POSTGRESQL_ENDPOINT1}\"|" \
+            -e "/sql-exporter:/,/endpoint:/ s|endpoint: \"\"|endpoint: \"${SQLSERVER_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|endpoint: \"${AMP_ENDPOINT}\"|endpoint: \"${ELASTICACHE_VALKEY_ENDPOINT}\"|" \
             -e "/elasticache-valkey-cluster/,/enabled: true/ s|port: \"\"|port: \"${ELASTICACHE_VALKEY_PORT}\"|" \
             "$values_file"
@@ -195,6 +197,7 @@ deploy_monitoring() {
         echo "AMP Endpoint: $amp_count occurrences (should be 2)"
         echo "ADOT Role ARN: $(grep -c "${ADOT_ROLE_ARN}" "$values_file" || echo "0") occurrences"
         echo "MySQL Endpoint 1: $(grep -c "${MYSQL_ENDPOINT1}" "$values_file" || echo "0") occurrences"
+        echo "SQL Server Endpoint: $(grep -c "${SQLSERVER_ENDPOINT}" "$values_file" || echo "0") occurrences"
         echo "Valkey Endpoint: $(grep -c "${ELASTICACHE_VALKEY_ENDPOINT}" "$values_file" || echo "0") occurrences"
         echo "Valkey Port: $(grep -c "${ELASTICACHE_VALKEY_PORT}" "$values_file" || echo "0") occurrences"
         echo ""
