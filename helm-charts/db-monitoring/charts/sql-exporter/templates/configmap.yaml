@@ -210,26 +210,17 @@ data:
       - metric_name: mssql_client_connections
         type: gauge
         help: 'Number of active client connections'
-        key_labels: ["client", "db_name"]
+        key_labels: ["db_name"]
         values: ["connections"]
         query: |
           SELECT 
-            ISNULL(client_net_address, 'unknown') as client,
             ISNULL(DB_NAME(database_id), 'master') as db_name,
             COUNT(*) as connections
           FROM sys.dm_exec_sessions 
           WHERE is_user_process = 1
-          GROUP BY client_net_address, database_id
+          GROUP BY database_id
       
-      - metric_name: mssql_kill_connection_errors
-        type: counter
-        help: 'Number of kill connection errors/sec since last restart'
-        values: ["kill_errors"]
-        query: |
-          SELECT cntr_value as kill_errors
-          FROM sys.dm_os_performance_counters 
-          WHERE counter_name = 'Kill Connection Errors/sec'
-      
+
       - metric_name: mssql_database_filesize
         type: gauge
         help: 'Physical sizes of files used by database in KB'
@@ -247,16 +238,12 @@ data:
       - metric_name: mssql_io_stall
         type: counter
         help: 'Wait time (ms) of stall since last restart'
-        key_labels: ["db_name", "type"]
+        key_labels: ["db_name"]
         values: ["io_stall_ms"]
         query: |
           SELECT 
             DB_NAME(database_id) as db_name,
-            CASE 
-              WHEN type = 0 THEN 'data'
-              WHEN type = 1 THEN 'log'
-              ELSE 'unknown'
-            END as type,
-            io_stall as io_stall_ms
+            SUM(io_stall) as io_stall_ms
           FROM sys.dm_io_virtual_file_stats(NULL, NULL)
+          GROUP BY database_id
 {{- end }}
