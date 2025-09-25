@@ -74,50 +74,55 @@
     },
     {
       "datasource": "$datasource",
-      "description": "**SQL Server Uptime**\n\nThe amount of time since the last restart of the SQL Server instance.",
+      "description": "**SQL Server Status**\n\nServer availability status (1=up, 0=down).",
       "fieldConfig": {
         "defaults": {
-          "decimals": 1,
-          "mappings": [],
+          "decimals": 0,
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN"
+                },
+                "1": {
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "rgba(245, 54, 54, 0.9)",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "rgba(237, 129, 40, 0.89)",
-                "value": 300
-              },
-              {
-                "color": "rgba(50, 172, 45, 0.97)",
-                "value": 3600
+                "color": "green",
+                "value": 1
               }
             ]
           },
-          "unit": "s"
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 3,
-        "w": 8,
+        "w": 6,
         "x": 0,
         "y": 1
       },
       "id": 2,
-      "interval": "1m",
-      "links": [],
-      "maxDataPoints": 100,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
         "graphMode": "none",
-        "justifyMode": "auto",
+        "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -129,17 +134,14 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "sqlserver_server_properties_uptime{instance=~\"$instance\"}",
+          "expr": "mssql_up{instance=~\"$instance\"}",
           "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
           "legendFormat": "{{instance}}",
           "range": true,
-          "refId": "A",
-          "step": 300
+          "refId": "A"
         }
       ],
-      "title": "Uptime",
+      "title": "Server Status",
       "type": "stat"
     },
     {
@@ -153,15 +155,15 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "rgba(50, 172, 45, 0.97)",
+                "color": "green",
                 "value": null
               },
               {
-                "color": "rgba(237, 129, 40, 0.89)",
+                "color": "yellow",
                 "value": 50
               },
               {
-                "color": "rgba(245, 54, 54, 0.9)",
+                "color": "red",
                 "value": 100
               }
             ]
@@ -172,14 +174,11 @@
       },
       "gridPos": {
         "h": 3,
-        "w": 8,
-        "x": 8,
+        "w": 6,
+        "x": 6,
         "y": 1
       },
       "id": 3,
-      "interval": "1m",
-      "links": [],
-      "maxDataPoints": 100,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -187,7 +186,7 @@
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -199,14 +198,11 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "sqlserver_connections{instance=~\"$instance\", state=\"current\"}",
+          "expr": "mssql_connections{instance=~\"$instance\"}",
           "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
           "legendFormat": "{{instance}}",
           "range": true,
-          "refId": "A",
-          "step": 20
+          "refId": "A"
         }
       ],
       "title": "Active Connections",
@@ -214,50 +210,47 @@
     },
     {
       "datasource": "$datasource",
-      "description": "**Database Size**\n\nTotal size of all databases on the SQL Server instance.",
+      "description": "**Memory Utilization**\n\nPercentage of memory utilization.",
       "fieldConfig": {
         "defaults": {
-          "decimals": 2,
+          "decimals": 1,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "rgba(50, 172, 45, 0.97)",
+                "color": "green",
                 "value": null
               },
               {
-                "color": "rgba(237, 129, 40, 0.89)",
-                "value": 10737418240
+                "color": "yellow",
+                "value": 80
               },
               {
-                "color": "rgba(245, 54, 54, 0.9)",
-                "value": 53687091200
+                "color": "red",
+                "value": 95
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "percent"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 3,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 12,
         "y": 1
       },
       "id": 4,
-      "interval": "1m",
-      "links": [],
-      "maxDataPoints": 100,
       "options": {
         "colorMode": "value",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -269,34 +262,95 @@
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "sum(sqlserver_database_size_bytes{instance=~\"$instance\"})",
+          "expr": "mssql_memory_utilization_percentage{instance=~\"$instance\"}",
           "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
           "legendFormat": "{{instance}}",
           "range": true,
-          "refId": "A",
-          "step": 300
+          "refId": "A"
         }
       ],
-      "title": "Database Size",
+      "title": "Memory Utilization",
+      "type": "stat"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**SQL Server Version**\n\nSQL Server product version.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.1.5",
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "mssql_product_version{instance=~\"$instance\"}",
+          "format": "time_series",
+          "legendFormat": "SQL Server {{version}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "SQL Server Version",
       "type": "stat"
     },
     {
       "collapsed": false,
+      "datasource": "$datasource",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 4
       },
-      "id": 5,
+      "id": 6,
       "panels": [],
-      "title": "Infrastructure Metrics",
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "refId": "A"
+        }
+      ],
+      "title": "Performance Metrics",
       "type": "row"
     },
     {
-      "datasource": "cloudwatch",
+      "datasource": "$datasource",
+      "description": "**Batch Requests per Second**\n\nNumber of Transact-SQL command batches received per second.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -309,7 +363,7 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 0,
+            "fillOpacity": 10,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -318,12 +372,12 @@
             },
             "insertNulls": false,
             "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -340,13 +394,10 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
-          }
+          },
+          "unit": "short"
         },
         "overrides": []
       },
@@ -354,107 +405,6 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 5
-      },
-      "id": 6,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": "cloudwatch",
-          "dimensions": {
-            "DBInstanceIdentifier": "$sqlserver_instance"
-          },
-          "expression": "",
-          "id": "",
-          "label": "",
-          "logGroups": [],
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "CPUUtilization",
-          "metricQueryType": 0,
-          "namespace": "AWS/RDS",
-          "period": "",
-          "queryMode": "Metrics",
-          "refId": "A",
-          "region": "default",
-          "sqlExpression": "",
-          "statistic": "Average"
-        }
-      ],
-      "title": "CPU Utilization",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "cloudwatch",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
         "y": 5
       },
       "id": 7,
@@ -472,28 +422,102 @@
       },
       "targets": [
         {
-          "datasource": "cloudwatch",
-          "dimensions": {
-            "DBInstanceIdentifier": "$sqlserver_instance"
-          },
-          "expression": "",
-          "id": "",
-          "label": "",
-          "logGroups": [],
-          "matchExact": true,
-          "metricEditorMode": 0,
-          "metricName": "FreeableMemory",
-          "metricQueryType": 0,
-          "namespace": "AWS/RDS",
-          "period": "",
-          "queryMode": "Metrics",
-          "refId": "A",
-          "region": "default",
-          "sqlExpression": "",
-          "statistic": "Average"
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "mssql_batch_requests_total",
+          "format": "time_series",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "refId": "A"
         }
       ],
-      "title": "Freeable Memory",
+      "title": "Batch Requests/sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**Transactions per Second**\n\nNumber of transactions started for the database per second.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "mssql_transactions_total",
+          "format": "time_series",
+          "legendFormat": "{{db_name}} - {{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Transactions/sec",
       "type": "timeseries"
     },
     {
@@ -505,7 +529,7 @@
         "x": 0,
         "y": 13
       },
-      "id": 8,
+      "id": 9,
       "panels": [],
       "targets": [
         {
@@ -513,449 +537,189 @@
           "refId": "A"
         }
       ],
-      "title": "Connections",
+      "title": "Memory and I/O",
       "type": "row"
     },
     {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
       "datasource": "$datasource",
-      "decimals": 0,
-      "description": "**SQL Server Connections**\n\nMonitors the number of active connections to the SQL Server instance.",
-      "editable": true,
-      "error": false,
+      "description": "**Page Life Expectancy**\n\nIndicates the minimum number of seconds a page will stay in the buffer pool.",
       "fieldConfig": {
         "defaults": {
-          "links": []
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
         },
         "overrides": []
       },
-      "fill": 2,
-      "fillGradient": 0,
-      "grid": {},
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 0,
         "y": 14
       },
-      "height": "250px",
-      "hiddenSeries": false,
-      "id": 9,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "max": true,
-        "min": true,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
+      "id": 10,
       "options": {
-        "alertThreshold": true
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
       "targets": [
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "sqlserver_connections{instance=~\"$instance\", state=\"current\"}",
+          "expr": "mssql_page_life_expectancy{instance=~\"$instance\"}",
           "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "Current Connections - {{instance}}",
+          "legendFormat": "{{instance}} - {{instance}}",
           "range": true,
-          "refId": "A",
-          "step": 20
+          "refId": "A"
         }
       ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "SQL Server Connections",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "cumulative"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "short",
-          "label": "",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        },
-        {
-          "format": "short",
-          "label": "",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
+      "title": "Page Life Expectancy",
+      "type": "timeseries"
     },
     {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
       "datasource": "$datasource",
-      "decimals": 2,
-      "description": "**SQL Server Sessions**\n\nMonitors active sessions and their states on the SQL Server instance.",
-      "editable": true,
-      "error": false,
+      "description": "**Page I/O Operations**\n\nPage reads and writes per second.",
       "fieldConfig": {
         "defaults": {
-          "links": []
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ops"
         },
         "overrides": []
       },
-      "fill": 2,
-      "fillGradient": 0,
-      "grid": {},
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 12,
         "y": 14
-      },
-      "hiddenSeries": false,
-      "id": 10,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "max": true,
-        "min": true,
-        "rightSide": false,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "datasource": "$datasource",
-          "editorMode": "code",
-          "expr": "sqlserver_sessions{instance=~\"$instance\"}",
-          "format": "time_series",
-          "hide": false,
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "{{state}} - {{instance}}",
-          "range": true,
-          "refId": "A",
-          "step": 20
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "SQL Server Sessions",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": [
-          "total"
-        ]
-      },
-      "yaxes": [
-        {
-          "format": "short",
-          "label": "Sessions",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        },
-        {
-          "format": "short",
-          "label": "",
-          "logBase": 1,
-          "min": 0,
-          "show": false
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
-    },
-    {
-      "collapsed": false,
-      "datasource": "$datasource",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 21
       },
       "id": 11,
-      "panels": [],
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "targets": [
         {
           "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "rate(mssql_page_reads_total{instance=~\"$instance\"}[5m])",
+          "format": "time_series",
+          "legendFormat": "Page Reads - {{instance}}",
+          "range": true,
           "refId": "A"
-        }
-      ],
-      "title": "Database Performance",
-      "type": "row"
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": "$datasource",
-      "decimals": 2,
-      "description": "**SQL Server Batch Requests**\n\nNumber of batch requests per second received by SQL Server.",
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "links": []
         },
-        "overrides": []
-      },
-      "fill": 2,
-      "fillGradient": 0,
-      "grid": {},
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 22
-      },
-      "hiddenSeries": false,
-      "id": 12,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "max": true,
-        "min": true,
-        "rightSide": false,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "rate(sqlserver_batch_requests_total{instance=~\"$instance\"}[$__interval])",
+          "expr": "rate(mssql_page_writes_total{instance=~\"$instance\"}[5m])",
           "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "{{instance}}",
+          "legendFormat": "Page Writes - {{instance}}",
           "range": true,
-          "refId": "A",
-          "step": 20
+          "refId": "B"
         }
       ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "Batch Requests/sec",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "short",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        },
-        {
-          "format": "short",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": "$datasource",
-      "decimals": 2,
-      "description": "**SQL Server Compilations**\n\nNumber of SQL compilations per second.",
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "links": []
-        },
-        "overrides": []
-      },
-      "fill": 2,
-      "fillGradient": 0,
-      "grid": {},
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 22
-      },
-      "height": "250px",
-      "hiddenSeries": false,
-      "id": 13,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "hideZero": true,
-        "max": true,
-        "min": true,
-        "rightSide": false,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "datasource": "$datasource",
-          "editorMode": "code",
-          "expr": "rate(sqlserver_sql_compilations_total{instance=~\"$instance\"}[$__interval])",
-          "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "{{instance}}",
-          "range": true,
-          "refId": "A",
-          "step": 20
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "SQL Compilations/sec",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "short",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        },
-        {
-          "format": "short",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
+      "title": "Page I/O Operations/sec",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -964,7 +728,113 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 22
+      },
+      "id": 12,
+      "panels": [],
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "refId": "A"
+        }
+      ],
+      "title": "Database Storage",
+      "type": "row"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**Database File Sizes**\n\nPhysical sizes of files used by database in KB.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "mssql_database_filesize{instance=~\"$instance\"}",
+          "format": "time_series",
+          "legendFormat": "{{db_name}} - {{logical_name}} ({{type}})",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Database File Sizes",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "datasource": "$datasource",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
       },
       "id": 14,
       "panels": [],
@@ -974,338 +844,192 @@
           "refId": "A"
         }
       ],
-      "title": "Database Size and Storage",
+      "title": "Errors and Issues",
       "type": "row"
     },
     {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
       "datasource": "$datasource",
-      "decimals": 2,
-      "description": "**Database Size**\n\nTotal size of databases on the SQL Server instance.",
-      "editable": true,
-      "error": false,
+      "description": "**Deadlocks**\n\nNumber of lock requests per second that resulted in a deadlock.",
       "fieldConfig": {
         "defaults": {
-          "links": []
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
         },
         "overrides": []
       },
-      "fill": 6,
-      "fillGradient": 0,
-      "grid": {},
       "gridPos": {
-        "h": 7,
-        "w": 24,
+        "h": 8,
+        "w": 12,
         "x": 0,
-        "y": 30
+        "y": 32
       },
-      "hiddenSeries": false,
       "id": 15,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "max": true,
-        "min": true,
-        "rightSide": false,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
       "options": {
-        "alertThreshold": true
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": true,
-      "steppedLine": false,
       "targets": [
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "sqlserver_database_size_bytes{instance=~\"$instance\"}",
+          "expr": "rate(mssql_deadlocks_total{instance=~\"$instance\"}[5m])",
           "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "{{database}} - {{instance}}",
+          "legendFormat": "{{instance}}",
           "range": true,
-          "refId": "A",
-          "step": 20
+          "refId": "A"
         }
       ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "Database Size",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "bytes",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        },
-        {
-          "format": "none",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
+      "title": "Deadlocks/sec",
+      "type": "timeseries"
     },
     {
-      "collapsed": false,
       "datasource": "$datasource",
+      "description": "**User Errors**\n\nNumber of user errors per second.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 37
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
       },
       "id": 16,
-      "panels": [],
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "targets": [
         {
           "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "rate(mssql_user_errors_total{instance=~\"$instance\"}[5m])",
+          "format": "time_series",
+          "legendFormat": "{{instance}}",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "Buffer Pool and Memory",
-      "type": "row"
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": "$datasource",
-      "decimals": 2,
-      "description": "**Buffer Pool Hit Ratio**\n\nPercentage of pages found in the buffer pool without having to read from disk.",
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "links": []
-        },
-        "overrides": []
-      },
-      "fill": 2,
-      "fillGradient": 0,
-      "grid": {},
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 38
-      },
-      "hiddenSeries": false,
-      "id": 17,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "max": true,
-        "min": true,
-        "rightSide": false,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "datasource": "$datasource",
-          "editorMode": "code",
-          "expr": "sqlserver_buffer_pool_hit_ratio{instance=~\"$instance\"}",
-          "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "{{instance}}",
-          "range": true,
-          "refId": "A",
-          "step": 20
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "Buffer Pool Hit Ratio",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "percent",
-          "logBase": 1,
-          "min": 0,
-          "max": 100,
-          "show": true
-        },
-        {
-          "format": "short",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
-    },
-    {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "datasource": "$datasource",
-      "decimals": 2,
-      "description": "**Page Life Expectancy**\n\nAverage number of seconds a page stays in the buffer pool.",
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "links": []
-        },
-        "overrides": []
-      },
-      "fill": 2,
-      "fillGradient": 0,
-      "grid": {},
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 38
-      },
-      "hiddenSeries": false,
-      "id": 18,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "max": true,
-        "min": true,
-        "rightSide": false,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "datasource": "$datasource",
-          "editorMode": "code",
-          "expr": "sqlserver_page_life_expectancy_seconds{instance=~\"$instance\"}",
-          "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "{{instance}}",
-          "range": true,
-          "refId": "A",
-          "step": 20
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "Page Life Expectancy",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "s",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        },
-        {
-          "format": "short",
-          "logBase": 1,
-          "min": 0,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false
-      }
+      "title": "User Errors/sec",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -1314,9 +1038,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 40
       },
-      "id": 19,
+      "id": 17,
       "panels": [],
       "targets": [
         {
@@ -1324,221 +1048,792 @@
           "refId": "A"
         }
       ],
-      "title": "Locks and Waits",
+      "title": "System Resources",
       "type": "row"
     },
     {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
       "datasource": "$datasource",
-      "decimals": 2,
-      "description": "**Lock Waits**\n\nNumber of lock requests that had to wait.",
-      "editable": true,
-      "error": false,
+      "description": "**Physical Memory**\n\nTotal and available physical memory in KB.",
       "fieldConfig": {
         "defaults": {
-          "links": []
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kbytes"
         },
         "overrides": []
       },
-      "fill": 2,
-      "fillGradient": 0,
-      "grid": {},
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 0,
-        "y": 46
+        "y": 41
       },
-      "hiddenSeries": false,
-      "id": 20,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "max": true,
-        "min": true,
-        "rightSide": false,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
+      "id": 18,
       "options": {
-        "alertThreshold": true
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
       "targets": [
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "rate(sqlserver_lock_waits_total{instance=~\"$instance\"}[$__interval])",
+          "expr": "mssql_total_physical_memory_kb{instance=~\"$instance\"}",
           "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "{{lock_type}} - {{instance}}",
+          "legendFormat": "Total Memory - {{instance}}",
           "range": true,
-          "refId": "A",
-          "step": 20
-        }
-      ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "Lock Waits/sec",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "short",
-          "logBase": 1,
-          "min": 0,
-          "show": true
+          "refId": "A"
         },
         {
-          "format": "short",
-          "logBase": 1,
-          "min": 0,
-          "show": true
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "mssql_available_physical_memory_kb{instance=~\"$instance\"}",
+          "format": "time_series",
+          "legendFormat": "Available Memory - {{instance}}",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "yaxis": {
-        "align": false
-      }
+      "title": "Physical Memory",
+      "type": "timeseries"
     },
     {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
       "datasource": "$datasource",
-      "decimals": 2,
-      "description": "**Deadlocks**\n\nNumber of deadlocks per second.",
-      "editable": true,
-      "error": false,
+      "description": "**I/O Stall Time**\n\nWait time (ms) of stall since last restart by database.",
       "fieldConfig": {
         "defaults": {
-          "links": []
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
-      "fill": 2,
-      "fillGradient": 0,
-      "grid": {},
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 12,
-        "y": 46
+        "y": 41
       },
-      "hiddenSeries": false,
-      "id": 21,
-      "legend": {
-        "alignAsTable": true,
-        "avg": true,
-        "current": false,
-        "max": true,
-        "min": true,
-        "show": true,
-        "sort": "avg",
-        "sortDesc": true,
-        "total": false,
-        "values": true
-      },
-      "lines": true,
-      "linewidth": 2,
-      "links": [],
-      "nullPointMode": "null",
+      "id": 19,
       "options": {
-        "alertThreshold": true
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       },
-      "percentage": false,
-      "pluginVersion": "10.1.5",
-      "pointradius": 5,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
       "targets": [
         {
           "datasource": "$datasource",
           "editorMode": "code",
-          "expr": "rate(sqlserver_deadlocks_total{instance=~\"$instance\"}[$__interval])",
+          "expr": "rate(mssql_io_stall_total{instance=~\"$instance\"}[5m])",
           "format": "time_series",
-          "interval": "1m",
-          "intervalFactor": 1,
-          "legendFormat": "{{instance}}",
+          "legendFormat": "{{db_name}} - {{instance}}",
           "range": true,
-          "refId": "A",
-          "step": 20
+          "refId": "A"
         }
       ],
-      "thresholds": [],
-      "timeRegions": [],
-      "title": "Deadlocks/sec",
-      "tooltip": {
-        "msResolution": false,
-        "shared": true,
-        "sort": 0,
-        "value_type": "cumulative"
+      "title": "I/O Stall Time/sec",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "datasource": "$datasource",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 49
       },
-      "type": "graph",
-      "xaxis": {
-        "mode": "time",
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
+      "id": 20,
+      "panels": [],
+      "targets": [
         {
-          "format": "short",
-          "label": "",
-          "logBase": 1,
-          "min": 0,
-          "show": true
+          "datasource": "$datasource",
+          "refId": "A"
+        }
+      ],
+      "title": "Additional Metrics",
+      "type": "row"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**Database States**\n\nDatabase states: 0=ONLINE 1=RESTORING 2=RECOVERING 3=RECOVERY_PENDING 4=SUSPECT 5=EMERGENCY 6=OFFLINE 7=COPYING 10=OFFLINE_SECONDARY.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "ONLINE"
+                },
+                "1": {
+                  "text": "RESTORING"
+                },
+                "2": {
+                  "text": "RECOVERING"
+                },
+                "3": {
+                  "text": "RECOVERY_PENDING"
+                },
+                "4": {
+                  "text": "SUSPECT"
+                },
+                "5": {
+                  "text": "EMERGENCY"
+                },
+                "6": {
+                  "text": "OFFLINE"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 50
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "mssql_database_state{instance=~\"$instance\"}",
+          "format": "time_series",
+          "legendFormat": "{{db_name}} - {{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Database States",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**Connections by Database**\n\nNumber of active connections by database and state.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 50
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "mssql_connections_by_database{instance=~\"$instance\"}",
+          "format": "time_series",
+          "legendFormat": "{{db_name}} ({{state}}) - {{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Connections by Database",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**Client Connections**\n\nNumber of active client connections by database.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 58
+      },
+      "id": 23,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "mssql_client_connections{instance=~\"$instance\"}",
+          "format": "time_series",
+          "legendFormat": "{{db_name}} - {{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Client Connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**Log Growths**\n\nTotal number of times the transaction log for the database has been expanded.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 58
+      },
+      "id": 24,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "rate(mssql_log_growths_total{instance=~\"$instance\"}[5m])",
+          "format": "time_series",
+          "legendFormat": "{{db_name}} - {{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Log Growths/sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**Additional I/O Metrics**\n\nLazy writes and checkpoint pages per second.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 66
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "rate(mssql_lazy_writes_total{instance=~\"$instance\"}[5m])",
+          "format": "time_series",
+          "legendFormat": "Lazy Writes - {{instance}}",
+          "range": true,
+          "refId": "A"
         },
         {
-          "format": "short",
-          "label": "",
-          "logBase": 1,
-          "min": 0,
-          "show": true
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "rate(mssql_checkpoint_pages_total{instance=~\"$instance\"}[5m])",
+          "format": "time_series",
+          "legendFormat": "Checkpoint Pages - {{instance}}",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "yaxis": {
-        "align": false
-      }
+      "title": "Additional I/O Operations/sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "$datasource",
+      "description": "**System Information**\n\nInstance local time and page fault count.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Page Faults"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ops"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 66
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": "$datasource",
+          "editorMode": "code",
+          "expr": "rate(mssql_page_fault_count_total{instance=~\"$instance\"}[5m])",
+          "format": "time_series",
+          "legendFormat": "Page Faults - {{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Page Faults/sec",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["sqlserver", "database", "monitoring"],
+  "tags": ["sqlserver", "database", "monitoring", "mssql"],
   "templating": {
     "list": [
       {
@@ -1561,14 +1856,14 @@
       {
         "current": {},
         "datasource": "$datasource",
-        "definition": "label_values(sqlserver_up,instance)",
+        "definition": "label_values(mssql_up,instance)",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "instance",
         "options": [],
         "query": {
-          "query": "label_values(sqlserver_up,instance)",
+          "query": "label_values(mssql_up,instance)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1579,25 +1874,6 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
-      },
-      {
-        "current": {},
-        "datasource": "cloudwatch",
-        "definition": "dimension_values(AWS/RDS,CPUUtilization,DBInstanceIdentifier)",
-        "hide": 0,
-        "includeAll": false,
-        "multi": false,
-        "name": "sqlserver_instance",
-        "options": [],
-        "query": {
-          "query": "dimension_values(AWS/RDS,CPUUtilization,DBInstanceIdentifier)",
-          "refId": "CloudWatchVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": ".*sqlserver.*",
-        "skipUrlSync": false,
-        "sort": 0,
-        "type": "query"
       }
     ]
   },
@@ -1637,8 +1913,8 @@
     "type": "timepicker"
   },
   "timezone": "",
-  "title": "SQL Server Monitoring",
-  "uid": "sqlserver-monitoring-dashboard",
+  "title": "SQL Server Monitoring - Complete Metrics",
+  "uid": "mssql-monitoring-dashboard",
   "version": 1,
   "weekStart": ""
 }

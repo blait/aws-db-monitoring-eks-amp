@@ -140,7 +140,7 @@ data:
           - job_name: sql-exporter
             static_configs:
             - targets:
-              - sql-exporter.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9399
+              - {{ include "db-monitoring.fullname" . }}-sql-exporter.{{ .Values.global.namespace | default "observability" }}.svc.cluster.local:9399
               labels:
                 job: sql-exporter
                 kubernetes_namespace: {{ .Values.global.namespace | default "observability" }}
