@@ -308,9 +308,10 @@ Resources:
   SQLServerInstance:
     Type: AWS::RDS::DBInstance
     Properties:
-      Engine: sqlserver-ex
+      Engine: sqlserver-se  # Changed to Standard Edition for Read Replica support
       EngineVersion: 15.00.4236.7.v1
-      DBInstanceClass: db.t3.small
+      DBInstanceClass: db.m5.large  # Standard Edition requires larger instance class
+      LicenseModel: license-included  # Required for SQL Server Standard Edition
       AllocatedStorage: 20
       StorageType: gp2
       MasterUsername: !Ref SQLServerMasterUsername
@@ -320,6 +321,7 @@ Resources:
         - !Ref SQLServerSecurityGroup
       Port: 1433
       BackupRetentionPeriod: 7
+      MultiAZ: true
       DeletionProtection: false
       Tags:
         - Key: Name
@@ -447,7 +449,7 @@ Resources:
           #!/bin/bash
 
           # SQL Server Performance Test Script
-          SQLSERVER_HOST=${SQLServerInstance.Endpoint.Address}
+          SQLSERVER_HOST=${SQLServerPrimaryInstance.Endpoint.Address}
           SQLSERVER_USER=${SQLServerMasterUsername}
           SQLSERVER_PASS=${SQLServerMasterPassword}
           SQLSERVER_DB=master
@@ -719,10 +721,10 @@ Outputs:
     Description: The endpoint for the RDS SQL Server instance
     Value: !GetAtt SQLServerInstance.Endpoint.Address
     Export:
-      Name: !Sub ${AWS::StackName}-SQLServerInstanceEndpoint
+      Name: !Sub ${AWS::StackName}-SQLServerReplicaEndpoint
 
   SQLServerInstancePort:
-    Description: The port for the RDS SQL Server instance
+    Description: The port for the RDS SQL Server instances
     Value: 1433
     Export:
       Name: !Sub ${AWS::StackName}-SQLServerInstancePort
