@@ -116,34 +116,3 @@ redis-exporter:
     annotations:
       prometheus.io/scrape: "true"
       prometheus.io/port: "9121"
-
-# Performance Insights Exporter for AMP
-# pi-exporter:
-#   enabled: true
-#   rdsInstances:
-#     - instanceId: "${POSTGRESQL_ENDPOINT1}"
-#       region: "${AWS_REGION}"
-#     - instanceId: "${POSTGRESQL_ENDPOINT2}" 
-#       region: "${AWS_REGION}"
-#   resources:
-#     requests:
-#       cpu: 100m
-#       memory: 128Mi
-#     limits:
-#       cpu: 200m
-#       memory: 256Mi
-
-# CloudWatch integration for AWS infrastructure metrics only
-cloudwatch:
-  enabled: true
-  region: ${AWS_REGION}
-  
-# Performance Insights integration - now via AMP
-performanceInsights:
-  enabled: true
-  # Collected via pi-exporter to AMP instead of Lambda to CloudWatch
-  useAMP: true
-  rbac:
-    create: true
-  networkPolicy:
-    enabled: true
