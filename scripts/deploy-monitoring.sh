@@ -321,7 +321,6 @@ verify_deployment() {
     echo "3. Check PostgreSQL exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=postgresql-exporter"
     echo "4. Check SQL Server exporter logs: kubectl logs -n $namespace -l app=sql-exporter"
     echo "5. Check Redis/Valkey exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=redis-exporter"
-    echo "6. Check Performance Insights exporter logs: kubectl logs -n $namespace -l app.kubernetes.io/name=pi-exporter"
     echo "7. Configure CloudWatch data source in AMG for infrastructure metrics"
     echo "8. Access Grafana dashboard using your AMG workspace URL"
     echo "9. Import the dashboard JSON files from the dashboards/ directory"
