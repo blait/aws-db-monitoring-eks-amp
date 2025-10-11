@@ -273,68 +273,20 @@ export ADOT_ROLE_ARN=$(aws iam get-role \
 
 In this module, we'll set up Amazon Managed Grafana (AMG) using the AWS CLI for IAM role creation and the AWS Console for workspace configuration.
 
-### Step 1: Create an IAM Role for Grafana using CLI
-
-```bash
-# Create IAM policy document for Grafana
-cat > grafana-trust-policy.json << EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "grafana.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-EOF
-
-# Create the IAM role
-aws iam create-role \
-  --role-name ${WORKSHOP_NAME}-grafana-role \
-  --assume-role-policy-document file://grafana-trust-policy.json
-
-# Attach necessary policies to the role
-# For Prometheus metrics access
-aws iam attach-role-policy \
-  --role-name ${WORKSHOP_NAME}-grafana-role \
-  --policy-arn arn:aws:iam::aws:policy/AmazonPrometheusFullAccess
-
-# For CloudWatch metrics access (needed for Aurora CPU and Network metrics)
-aws iam attach-role-policy \
-  --role-name ${WORKSHOP_NAME}-grafana-role \
-  --policy-arn arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
-
-# Verify the attached policies
-aws iam list-attached-role-policies \
-  --role-name ${WORKSHOP_NAME}-grafana-role
-
-# Get the role ARN
-export GRAFANA_ROLE_ARN=$(aws iam get-role \
-  --role-name ${WORKSHOP_NAME}-grafana-role \
-  --query 'Role.Arn' \
-  --output text)
-
-echo "Grafana Role ARN: $GRAFANA_ROLE_ARN"
 ```
 
-### Step 2: Create an AMG workspace
+### Step 1: Create an AMG workspace
 
 1. Open the AWS Console and navigate to Amazon Managed Grafana
 2. Click "Create workspace"
 3. Enter a workspace name: `${WORKSHOP_NAME}-grafana` (e.g., "integrated-db-monitoring-grafana")
 4. Under "Access method", select "AWS IAM Identity Center (successor to AWS SSO)"
 5. Under "Permission type", select "Service managed"
-6. Under "Service role", select "Use an existing service role"
-7. Select the role you created in Step 1 from the dropdown
-8. Under "Data sources", select "Amazon Managed Service for Prometheus"
-9. Review your settings and click "Create workspace"
-10. Wait for the workspace to be created (this may take a few minutes)
+6. For Data sources, select "Amazon Managed Service for Prometheus" and "Amazon CloudWatch"
+7. Review your settings and click "Create workspace"
+8. Wait for the workspace to be created (this may take a few minutes)
 
-### Step 3: Configure AMG workspace authentication
+### Step 2: Configure AMG workspace authentication
 
 1. Once the workspace is created, click on the workspace name to view its details
 2. Click on "Authentication" in the left sidebar
@@ -346,7 +298,7 @@ echo "Grafana Role ARN: $GRAFANA_ROLE_ARN"
    - Set the permission level to "Admin"
 5. Click "Save changes"
 
-### Step 4: Configure AMP as a data source in AMG
+### Step 3: Configure AMP as a data source in AMG
 
 1. In the AMG workspace details page, click on the "Grafana workspace URL" to open the Grafana UI
 2. Log in with your AWS SSO credentials
@@ -358,19 +310,16 @@ echo "Grafana Role ARN: $GRAFANA_ROLE_ARN"
    - Name: AMP
    - Workspace: Select your AMP workspace (created in Module 4)
    - Region: Select your AWS region
-8. Click "Save & test"
-9. You should see a "Data source is working" message
+8. Click "Save"
 
-### Step 5: Configure CloudWatch as a data source in AMG
+### Step 4: Configure CloudWatch as a data source in AMG
 
 1. Click "Add data source" again
 2. Select "CloudWatch"
 3. Configure the data source:
    - Name: CloudWatch
-   - Authentication Provider: AWS IAM Roles for Service Accounts
    - Default Region: Select your AWS region
-4. Click "Save & test"
-5. You should see a "Data source is working" message
+4. Click "Save"
 
 ### Step 5: Store the AMG workspace ID as an environment variable
 
@@ -403,7 +352,7 @@ The deployment script will:
 - ✅ Verify deployment status
 - ✅ Provide helpful next steps
 
-### Manual Helm Deployment (Alternative) - 아직 잘 안됨
+### Manual Helm Deployment (Alternative) - Still in the works
 
 If you prefer manual control:
 
@@ -446,38 +395,11 @@ helm uninstall db-monitoring -n observability
 
 ## Module 7: Dashboard Configuration
 
-### Import MySQL Dashboard
+### Import Dashboards
 
 1. Access your AMG workspace
-2. Import dashboard from `dashboards/mysql.json`
+2. Import dashboard for each database from `dashboards/`
 3. Configure data source as "AMP"
-
-### Import PostgreSQL Dashboard
-
-1. Import the comprehensive PostgreSQL dashboard from `dashboards/postgresql.json`
-2. Configure data sources:
-   - **AMP (Prometheus)**: Application-level metrics, table performance, Performance Insights
-   - **CloudWatch**: AWS infrastructure metrics (CPU, Memory, Network I/O)
-3. The dashboard includes:
-   - Active connections monitoring
-   - Transaction rate tracking
-   - Cache hit ratio analysis
-   - Row activity metrics
-   - Write activity monitoring
-   - Lock monitoring
-   - Database size tracking
-   - Table performance metrics
-   - **AWS Infrastructure metrics** (CPU, Memory, Connections)
-   - **Performance Insights** (Database Load, Wait Events) via AMP
-
-### Dashboard Features
-
-Both dashboards include:
-- **Real-time metrics** with 30-second refresh
-- **Multi-instance support** with template variables
-- **Comprehensive coverage** of key database metrics
-- **Professional styling** with appropriate thresholds
-- **Responsive design** for different screen sizes
 
 ## Module 8: Monitoring Best Practices
 
