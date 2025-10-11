@@ -449,7 +449,7 @@ Resources:
           #!/bin/bash
 
           # SQL Server Performance Test Script
-          SQLSERVER_HOST=${SQLServerPrimaryInstance.Endpoint.Address}
+          SQLSERVER_HOST=${SQLServerInstance.Endpoint.Address}
           SQLSERVER_USER=${SQLServerMasterUsername}
           SQLSERVER_PASS=${SQLServerMasterPassword}
           SQLSERVER_DB=master
