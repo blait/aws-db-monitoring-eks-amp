@@ -1,22 +1,5 @@
 {
-  "__inputs": [
-    {
-      "name": "DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4",
-      "label": "Prometheus ws-05cc27ed-93e3-49cc-b7f5-5db673cb63c4",
-      "description": "",
-      "type": "datasource",
-      "pluginId": "prometheus",
-      "pluginName": "Prometheus"
-    },
-    {
-      "name": "DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2",
-      "label": "Amazon CloudWatch ap-northeast-2",
-      "description": "",
-      "type": "datasource",
-      "pluginId": "cloudwatch",
-      "pluginName": "CloudWatch"
-    }
-  ],
+  "__inputs": [],
   "__elements": {},
   "__requires": [
     {
@@ -104,7 +87,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "**Uptime**\n\nThe amount of time since the last restart of the MySQL server process.",
       "fieldConfig": {
@@ -167,7 +150,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_uptime{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -183,7 +166,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "**Current QPS**\n\nBased on the queries reported by MySQL's ``SHOW STATUS`` command, it is the number of statements executed by the server within the last second. This variable includes statements executed within stored programs, unlike the Questions variable. It does not count \n``COM_PING`` or ``COM_STATISTICS`` commands.",
       "fieldConfig": {
@@ -253,7 +236,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_queries{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -269,7 +252,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "**InnoDB Buffer Pool Size**\n\nInnoDB maintains a storage area called the buffer pool for caching data and indexes in memory.  Knowing how the InnoDB buffer pool works, and taking advantage of it to keep frequently accessed data in memory, is one of the most important aspects of MySQL tuning. The goal is to keep the working set in memory. In most cases, this should be between 60%-90% of available memory on a dedicated database host, but depends on many factors.",
       "fieldConfig": {
@@ -339,7 +322,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_variables_innodb_buffer_pool_size{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -355,7 +338,7 @@
     {
       "datasource": {
         "type": "cloudwatch",
-        "uid": "${DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2}"
+        "uid": "${DS_CLOUDWATCH}"
       },
       "fieldConfig": {
         "defaults": {
@@ -440,7 +423,7 @@
         {
           "datasource": {
             "type": "cloudwatch",
-            "uid": "${DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2}"
+            "uid": "${DS_CLOUDWATCH}"
           },
           "dimensions": {
             "DBClusterIdentifier": "$CW_DB_CLUSTER"
@@ -468,7 +451,7 @@
     {
       "datasource": {
         "type": "cloudwatch",
-        "uid": "${DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2}"
+        "uid": "${DS_CLOUDWATCH}"
       },
       "fieldConfig": {
         "defaults": {
@@ -553,7 +536,7 @@
         {
           "datasource": {
             "type": "cloudwatch",
-            "uid": "${DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2}"
+            "uid": "${DS_CLOUDWATCH}"
           },
           "dimensions": {
             "DBClusterIdentifier": "$CW_DB_CLUSTER"
@@ -581,7 +564,7 @@
     {
       "datasource": {
         "type": "cloudwatch",
-        "uid": "${DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2}"
+        "uid": "${DS_CLOUDWATCH}"
       },
       "fieldConfig": {
         "defaults": {
@@ -666,7 +649,7 @@
         {
           "datasource": {
             "type": "cloudwatch",
-            "uid": "${DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2}"
+            "uid": "${DS_CLOUDWATCH}"
           },
           "dimensions": {
             "DBClusterIdentifier": "$CW_DB_CLUSTER"
@@ -714,7 +697,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "**Max Connections** \n\nMax Connections is the maximum permitted number of simultaneous client connections. By default, this is 151. Increasing this value increases the number of file descriptors that mysqld requires. If the required number of descriptors are not available, the server reduces the value of Max Connections.\n\nmysqld actually permits Max Connections + 1 clients to connect. The extra connection is reserved for use by accounts that have the SUPER privilege, such as root.\n\nMax Used Connections is the maximum number of connections that have been in use simultaneously since the server started.\n\nConnections is the number of connection attempts (successful or not) to the MySQL server.",
       "fieldConfig": {
@@ -808,7 +791,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "max_over_time(mysql_global_status_threads_connected{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -820,7 +803,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "max_over_time(mysql_global_status_max_used_connections{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -833,7 +816,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_variables_max_connections{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -850,7 +833,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "**MySQL Questions**\n\nThe number of statements executed by the server. This includes only statements sent to the server by clients and not statements executed within stored programs, unlike the Queries used in the QPS calculation. \n\nThis variable does not count the following commands:\n* ``COM_PING``\n* ``COM_STATISTICS``\n* ``COM_STMT_PREPARE``\n* ``COM_STMT_CLOSE``\n* ``COM_STMT_RESET``",
       "fieldConfig": {
@@ -947,7 +930,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_questions{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -963,7 +946,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "**MySQL Active Threads**\n\nThreads Connected is the number of open connections, while Threads Running is the number of threads not sleeping.",
       "fieldConfig": {
@@ -1135,7 +1118,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "max_over_time(mysql_global_status_threads_connected{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1148,7 +1131,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "max_over_time(mysql_global_status_threads_running{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1161,7 +1144,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "avg_over_time(mysql_global_status_threads_running{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1178,7 +1161,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "**MySQL Thread Cache**\n\nThe thread_cache_size variable sets how many threads the server should cache to reuse. When a client disconnects, the client's threads are put in the cache if the cache is not full. It is autosized in MySQL 5.6.8 and above (capped to 100). Requests for threads are satisfied by reusing threads taken from the cache if possible, and only when the cache is empty is a new thread created.\n\n* *Threads_created*: The number of threads created to handle connections.\n* *Threads_cached*: The number of threads in the thread cache.",
       "fieldConfig": {
@@ -1287,7 +1270,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_variables_thread_cache_size{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -1299,7 +1282,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_threads_cached{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -1312,7 +1295,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_threads_created{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1342,7 +1325,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Percentage of InnoDB buffer pool read requests that are served from memory instead of disk. Higher values indicate better buffer pool utilization",
       "fieldConfig": {
@@ -1396,7 +1379,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -1413,7 +1396,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Shows the InnoDB storage engine disk activity, including the number of data pages read from disk (Data Reads) and written to disk (Data Writes) for the selected MySQL instance.",
       "fieldConfig": {
@@ -1500,7 +1483,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_innodb_data_reads{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -1513,7 +1496,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_innodb_data_writes{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -1530,7 +1513,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Shows the rate of InnoDB log waits and OS-level fsync operations for the selected MySQL instance.",
       "fieldConfig": {
@@ -1616,7 +1599,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_innodb_log_waits{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1628,7 +1611,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_innodb_os_log_fsyncs{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1645,7 +1628,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Rate of reads and read requests in the InnoDB buffer pool per second.",
       "fieldConfig": {
@@ -1732,7 +1715,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_innodb_buffer_pool_reads{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1744,7 +1727,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_innodb_buffer_pool_read_requests{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1774,7 +1757,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The rate of time (in milliseconds per second) spent acquiring row locks in InnoDB. High values may indicate contention or locking issues in the database.",
       "fieldConfig": {
@@ -1883,7 +1866,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_innodb_row_lock_time{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1899,7 +1882,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The rate of row lock waits in InnoDB per second. Higher values may indicate lock contention.",
       "fieldConfig": {
@@ -1983,7 +1966,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_innodb_row_lock_waits{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -1999,7 +1982,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The average time (in milliseconds) InnoDB spends waiting for row locks per lock wait. Higher values indicate longer contention times.",
       "fieldConfig": {
@@ -2083,7 +2066,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "(rate(mysql_global_status_innodb_row_lock_time{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])/rate(mysql_global_status_innodb_row_lock_waits{instance=~\"$PROM_DB_INSTANCE\"}[$__interval]))",
@@ -2112,7 +2095,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The rate at which table locks were granted immediately without waiting. A consistently high value indicates low contention.",
       "fieldConfig": {
@@ -2196,7 +2179,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_table_locks_immediate{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2212,7 +2195,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the rate at which table locks required waiting before being granted. Higher values may indicate lock contention or concurrency bottlenecks.",
       "fieldConfig": {
@@ -2296,7 +2279,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_table_locks_waited{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2312,7 +2295,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -2396,7 +2379,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_innodb_deadlocks{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2426,7 +2409,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the rate of slow queries detected by MySQL over time.",
       "fieldConfig": {
@@ -2511,7 +2494,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_slow_queries{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2527,7 +2510,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the rate of SQL statement errors over time. A high rate may indicate query or schema issues.",
       "fieldConfig": {
@@ -2610,7 +2593,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_perf_schema_events_statements_errors_total{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2626,7 +2609,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the rate of queries executed without using an index, as reported by MySQL Performance Schema.\nA consistently high value may indicate missing indexes or inefficient query plans that can degrade performance.",
       "fieldConfig": {
@@ -2711,7 +2694,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_perf_schema_events_statements_no_index_used_total{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2747,7 +2730,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the rate of temporary objects created by MySQL during query execution.\nA high number of disk-based temporary tables or files may indicate insufficient memory settings or inefficient query design.",
       "fieldConfig": {
@@ -2837,7 +2820,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_created_tmp_tables{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2849,7 +2832,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_created_tmp_disk_tables{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2862,7 +2845,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_created_tmp_files{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -2879,7 +2862,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the rate of different types of SELECT operations executed by MySQL, providing insights into query efficiency and index usage patterns. A high rate of full joins or full table scans may indicate missing indexes or inefficient query design.",
       "fieldConfig": {
@@ -2990,7 +2973,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_select_full_join{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -3002,7 +2985,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_select_full_range_join{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -3015,7 +2998,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_select_range{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -3028,7 +3011,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_select_range_check{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -3041,7 +3024,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_select_scan{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -3078,7 +3061,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Monitors MySQL network throughput, showing the rate of bytes received from and sent to clients.\nA sudden increase in network traffic may indicate heavy query loads, large result sets, or inefficient data transfer patterns.",
       "fieldConfig": {
@@ -3168,7 +3151,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_bytes_received{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -3180,7 +3163,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "\nrate(mysql_global_status_bytes_sent{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -3217,7 +3200,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays key memory components used internally by MySQL and InnoDB, such as buffer pools, caches, and adaptive hash memory.\nThese metrics help identify memory usage distribution across different MySQL subsystems, useful for tuning memory parameters and identifying potential bottlenecks.",
       "fieldConfig": {
@@ -3375,7 +3358,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_variables_innodb_log_buffer_size{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -3388,7 +3371,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_innodb_mem_adaptive_hash{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -3425,7 +3408,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the top 5 MySQL command types executed per second.\nHelps identify workload patterns and detect unusual query activity (e.g., frequent commits or rollbacks).",
       "fieldConfig": {
@@ -3521,7 +3504,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "topk(5, rate(mysql_global_status_commands_total{instance=~\"$PROM_DB_INSTANCE\"}[$__interval]) > 0)",
@@ -3537,7 +3520,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays MySQL internal handler operations to understand how queries access tables and indexes. A high number of Handler_read_rnd_next may indicate full table scans or missing indexes.",
       "fieldConfig": {
@@ -3648,7 +3631,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_handlers_total{instance=~\"$PROM_DB_INSTANCE\", handler!~\"commit|rollback|savepoint.*|prepare\"}[5m])",
@@ -3664,7 +3647,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the rate of internal transaction-related handler operations such as COMMIT, ROLLBACK, SAVEPOINT, and PREPARE.\nHelps identify transaction workload patterns and detect abnormal rollback spikes.",
       "fieldConfig": {
@@ -3775,7 +3758,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_handlers_total{\n  instance=~\"$PROM_DB_INSTANCE\",\n  handler=~\"commit|rollback|savepoint.*|prepare\"\n}[5m])",
@@ -3791,7 +3774,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the number of MySQL threads per state (Sleep, Query, Locked, etc.) over time.\nHelps identify connection saturation, long-running queries, and locking issues.",
       "fieldConfig": {
@@ -3902,7 +3885,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_info_schema_processlist_threads{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -3918,7 +3901,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Shows the top 5 MySQL thread states by average number of threads observed in the past hour. Useful for identifying which operations are most common or blocking database resources.",
       "fieldConfig": {
@@ -3972,7 +3955,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "topk(5, avg_over_time(mysql_info_schema_processlist_threads{instance=~\"$PROM_DB_INSTANCE\"}[1h]))",
@@ -4009,7 +3992,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Shows the number of files opened per second by the MySQL server, helping detect sudden increases in file handling activity.",
       "fieldConfig": {
@@ -4099,7 +4082,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_opened_files{instance=~\"$PROM_DB_INSTANCE\"}[$__interval]) or irate(mysql_global_status_opened_files{instance=~\"$instance\"}[5m])",
@@ -4115,7 +4098,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4229,7 +4212,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_open_files{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -4241,7 +4224,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_variables_open_files_limit{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -4254,7 +4237,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_innodb_num_open_files{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -4291,7 +4274,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays table open activity and the efficiency of the table open cache. Includes the number of tables opened, successful table cache hits, table cache misses, and cache overflows. Useful for understanding how well the table cache is utilized and identifying potential bottlenecks in table access.",
       "fieldConfig": {
@@ -4400,7 +4383,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_opened_tables{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -4412,7 +4395,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_table_open_cache_hits{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -4425,7 +4408,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_table_open_cache_misses{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -4438,7 +4421,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_table_open_cache_overflows{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])",
@@ -4451,7 +4434,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "(\n  rate(mysql_global_status_table_open_cache_hits{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])\n) \n/\n(\n  rate(mysql_global_status_table_open_cache_hits{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])\n  +\n  rate(mysql_global_status_table_open_cache_misses{instance=~\"$PROM_DB_INSTANCE\"}[$__interval])\n)\n* 100",
@@ -4469,7 +4452,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "**MySQL Open Tables**\n\nThe recommendation is to set the `table_open_cache_instances` to a loose correlation to virtual CPUs, keeping in mind that more instances means the cache is split more times. If you have a cache set to 500 but it has 10 instances, each cache will only have 50 cached.\n\nThe `table_definition_cache` and `table_open_cache` can be left as default as they are auto-sized MySQL 5.6 and above (ie: do not set them to any value).",
       "fieldConfig": {
@@ -4565,7 +4548,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_open_tables{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -4577,7 +4560,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_variables_table_open_cache{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -4614,7 +4597,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Displays the number of currently open table definitions, the maximum table definition cache size, and the rate of table definitions being opened. Helps monitor cache usage and detect potential cache pressure.",
       "fieldConfig": {
@@ -4710,7 +4693,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_status_open_table_definitions{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -4722,7 +4705,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "mysql_global_variables_table_definition_cache{instance=~\"$PROM_DB_INSTANCE\"}",
@@ -4735,7 +4718,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "rate(mysql_global_status_opened_table_definitions{instance=~\"$PROM_DB_INSTANCE\"}[$__interval]) or irate(mysql_global_status_opened_table_definitions{instance=~\"$PROM_DB_INSTANCE\"}[5m])",
@@ -4756,11 +4739,7 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false,
-          "text": "Prometheus ws-05cc27ed-93e3-49cc-b7f5-5db673cb63c4",
-          "value": "feuw2upupm134b"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
         "multi": false,
@@ -4777,7 +4756,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${DS_PROMETHEUS_WS-05CC27ED-93E3-49CC-B7F5-5DB673CB63C4}"
+          "uid": "${DS_PROMETHEUS}"
         },
         "definition": "label_values(mysql_up,instance)",
         "hide": 0,
@@ -4797,11 +4776,7 @@
         "type": "query"
       },
       {
-        "current": {
-          "selected": false,
-          "text": "Amazon CloudWatch ap-northeast-2",
-          "value": "beuw68likj8xsb"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
         "multi": false,
@@ -4818,7 +4793,7 @@
         "current": {},
         "datasource": {
           "type": "cloudwatch",
-          "uid": "${DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2}"
+          "uid": "${DS_CLOUDWATCH}"
         },
         "definition": "",
         "description": "Select the Amazon Aurora DB cluster for which to display CloudWatch metrics",
@@ -4847,7 +4822,7 @@
         "current": {},
         "datasource": {
           "type": "cloudwatch",
-          "uid": "${DS_AMAZON_CLOUDWATCH AP-NORTHEAST-2}"
+          "uid": "${DS_CLOUDWATCH}"
         },
         "definition": "",
         "description": "Select the specific DB instance within a cluster to display CloudWatch metrics",
