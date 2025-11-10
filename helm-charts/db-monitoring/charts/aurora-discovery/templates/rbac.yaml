@@ -1,0 +1,45 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "aurora-discovery.fullname" . }}
+  labels:
+    {{- include "aurora-discovery.labels" . | nindent 4 }}
+rules:
+# ConfigMap permissions for state management
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+# Secret permissions for database credentials
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+# Service permissions for exporter services
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+# Deployment permissions for exporter deployments
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+# Pod permissions for monitoring exporter status
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "aurora-discovery.fullname" . }}
+  labels:
+    {{- include "aurora-discovery.labels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "aurora-discovery.serviceAccountName" . }}
+  namespace: {{ include "aurora-discovery.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "aurora-discovery.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

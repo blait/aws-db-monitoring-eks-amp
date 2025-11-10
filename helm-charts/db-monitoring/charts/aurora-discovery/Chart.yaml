@@ -1,0 +1,13 @@
+apiVersion: v2
+name: aurora-discovery
+description: Automated Aurora cluster discovery and monitoring system
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - aurora
+  - discovery
+  - monitoring
+  - aws
+  - rds
+  - automation

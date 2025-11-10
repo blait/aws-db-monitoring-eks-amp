@@ -1,0 +1,161 @@
+suite: test rbac template
+templates:
+  - rbac.yaml
+tests:
+  - it: should render ClusterRole with proper permissions
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: ClusterRole
+          documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-aurora-discovery
+          documentIndex: 0
+      - isSubset:
+          path: metadata.labels
+          content:
+            app.kubernetes.io/name: aurora-discovery
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/managed-by: Helm
+          documentIndex: 0
+
+  - it: should have correct ConfigMap permissions
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: ["configmaps"]
+            verbs: ["get", "list", "create", "update", "patch", "delete"]
+          documentIndex: 0
+
+  - it: should have correct Secret permissions
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: ["secrets"]
+            verbs: ["get", "list", "create", "update", "patch", "delete"]
+          documentIndex: 0
+
+  - it: should have correct Service permissions
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: ["services"]
+            verbs: ["get", "list", "create", "update", "patch", "delete"]
+          documentIndex: 0
+
+  - it: should have correct Deployment permissions
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["apps"]
+            resources: ["deployments"]
+            verbs: ["get", "list", "create", "update", "patch", "delete"]
+          documentIndex: 0
+
+  - it: should have correct Pod permissions
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["get", "list", "watch"]
+          documentIndex: 0
+
+  - it: should render ClusterRoleBinding correctly
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+          documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-aurora-discovery
+          documentIndex: 1
+      - isSubset:
+          path: metadata.labels
+          content:
+            app.kubernetes.io/name: aurora-discovery
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/managed-by: Helm
+          documentIndex: 1
+
+  - it: should bind to correct ServiceAccount
+    asserts:
+      - equal:
+          path: subjects[0].kind
+          value: ServiceAccount
+          documentIndex: 1
+      - equal:
+          path: subjects[0].name
+          value: RELEASE-NAME-aurora-discovery
+          documentIndex: 1
+      - equal:
+          path: subjects[0].namespace
+          value: observability
+          documentIndex: 1
+
+  - it: should reference correct ClusterRole
+    asserts:
+      - equal:
+          path: roleRef.kind
+          value: ClusterRole
+          documentIndex: 1
+      - equal:
+          path: roleRef.name
+          value: RELEASE-NAME-aurora-discovery
+          documentIndex: 1
+      - equal:
+          path: roleRef.apiGroup
+          value: rbac.authorization.k8s.io
+          documentIndex: 1
+
+  - it: should use custom ServiceAccount name when provided
+    set:
+      serviceAccount.name: custom-service-account
+    asserts:
+      - equal:
+          path: subjects[0].name
+          value: custom-service-account
+          documentIndex: 1
+
+  - it: should use custom namespace when provided
+    set:
+      kubernetes.namespace: custom-namespace
+    asserts:
+      - equal:
+          path: subjects[0].namespace
+          value: custom-namespace
+          documentIndex: 1
+
+  - it: should not render when rbac.create is false
+    set:
+      rbac.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render with custom fullname override
+    set:
+      fullnameOverride: custom-aurora-discovery
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custom-aurora-discovery
+          documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: custom-aurora-discovery
+          documentIndex: 1
+      - equal:
+          path: roleRef.name
+          value: custom-aurora-discovery
+          documentIndex: 1

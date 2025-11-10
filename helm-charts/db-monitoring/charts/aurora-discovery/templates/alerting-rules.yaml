@@ -1,0 +1,212 @@
+{{- if .Values.alerting.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "aurora-discovery.fullname" . }}-alerts
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "aurora-discovery.labels" . | nindent 4 }}
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: aurora-discovery.rules
+    interval: {{ .Values.alerting.evaluationInterval | default "30s" }}
+    rules:
+    
+    # CronJob execution alerts
+    - alert: AuroraDiscoveryCronJobFailed
+      expr: |
+        (
+          kube_cronjob_status_last_schedule_time{cronjob="{{ include "aurora-discovery.fullname" . }}", namespace="{{ .Values.global.namespace | default .Release.Namespace }}"}
+          < (time() - {{ .Values.alerting.cronJobFailureThreshold | default 7200 }})
+        )
+        or
+        (
+          aurora_discovery_last_execution_success == 0
+        )
+      for: {{ .Values.alerting.cronJobFailureFor | default "5m" }}
+      labels:
+        severity: {{ .Values.alerting.cronJobFailureSeverity | default "warning" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "Aurora Discovery CronJob execution failed"
+        description: |
+          Aurora Discovery CronJob has not completed successfully in the last {{ div (.Values.alerting.cronJobFailureThreshold | default 7200) 60 }} minutes.
+          This means new Aurora clusters may not be automatically discovered and monitored.
+          
+          Troubleshooting steps:
+          1. Check CronJob status: `kubectl describe cronjob {{ include "aurora-discovery.fullname" . }} -n {{ .Values.global.namespace | default .Release.Namespace }}`
+          2. Check recent job logs: `kubectl logs -l app.kubernetes.io/name=aurora-discovery -n {{ .Values.global.namespace | default .Release.Namespace }} --tail=100`
+          3. Verify AWS permissions and connectivity
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-cronjob-failed"
+    
+    - alert: AuroraDiscoveryHighErrorRate
+      expr: |
+        rate(aurora_discovery_errors_total[5m]) > {{ .Values.alerting.highErrorRateThreshold | default 0.1 }}
+      for: {{ .Values.alerting.highErrorRateFor | default "5m" }}
+      labels:
+        severity: {{ .Values.alerting.highErrorRateSeverity | default "warning" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "High error rate in Aurora Discovery"
+        description: |
+          Aurora Discovery is experiencing a high error rate: {{`{{ $value | humanize }}`}} errors/sec over the last 5 minutes.
+          This may indicate issues with AWS API access, Kubernetes permissions, or cluster connectivity.
+          
+          Error breakdown by component:
+          {{`{{ range query "rate(aurora_discovery_errors_total[5m]) > 0" }}`}}
+          - {{`{{ .Labels.component }}`}}: {{`{{ .Labels.error_type }}`}} ({{`{{ .Value | humanize }}`}}/sec)
+          {{`{{ end }}`}}
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-high-error-rate"
+    
+    # AWS API alerts
+    - alert: AuroraDiscoveryAWSAPIThrottling
+      expr: |
+        rate(aurora_discovery_aws_api_calls_total{status="error"}[5m]) > {{ .Values.alerting.awsThrottlingThreshold | default 0.05 }}
+        and
+        increase(aurora_discovery_aws_api_calls_total{status="error"}[5m]) > 0
+      for: {{ .Values.alerting.awsThrottlingFor | default "2m" }}
+      labels:
+        severity: {{ .Values.alerting.awsThrottlingSeverity | default "warning" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "Aurora Discovery experiencing AWS API throttling"
+        description: |
+          Aurora Discovery is being throttled by AWS APIs: {{`{{ $value | humanize }}`}} throttled requests/sec.
+          This may cause delays in cluster discovery and exporter management.
+          
+          Consider:
+          1. Reducing discovery frequency
+          2. Implementing exponential backoff (should be automatic)
+          3. Checking AWS service limits
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-aws-throttling"
+    
+    - alert: AuroraDiscoveryAWSAPIHighLatency
+      expr: |
+        histogram_quantile(0.95, rate(aurora_discovery_aws_api_duration_seconds_bucket[5m])) > {{ .Values.alerting.awsHighLatencyThreshold | default 10 }}
+      for: {{ .Values.alerting.awsHighLatencyFor | default "5m" }}
+      labels:
+        severity: {{ .Values.alerting.awsHighLatencySeverity | default "info" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "High latency in Aurora Discovery AWS API calls"
+        description: |
+          95th percentile latency for AWS API calls is {{`{{ $value | humanizeDuration }}`}}.
+          This may indicate AWS service issues or network connectivity problems.
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-aws-high-latency"
+    
+    # Kubernetes API alerts
+    - alert: AuroraDiscoveryKubernetesAPIErrors
+      expr: |
+        rate(aurora_discovery_k8s_api_calls_total{status="error"}[5m]) > {{ .Values.alerting.k8sErrorThreshold | default 0.05 }}
+      for: {{ .Values.alerting.k8sErrorFor | default "3m" }}
+      labels:
+        severity: {{ .Values.alerting.k8sErrorSeverity | default "warning" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "Aurora Discovery experiencing Kubernetes API errors"
+        description: |
+          Aurora Discovery is experiencing Kubernetes API errors: {{`{{ $value | humanize }}`}} errors/sec.
+          This may prevent proper exporter resource management.
+          
+          Check:
+          1. RBAC permissions
+          2. Resource quotas
+          3. Kubernetes cluster health
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-k8s-errors"
+    
+    # Resource management alerts
+    - alert: AuroraDiscoveryExporterCreationFailed
+      expr: |
+        increase(aurora_discovery_errors_total{component="resource_manager"}[10m]) > {{ .Values.alerting.exporterCreationFailureThreshold | default 3 }}
+      for: {{ .Values.alerting.exporterCreationFailureFor | default "0m" }}
+      labels:
+        severity: {{ .Values.alerting.exporterCreationFailureSeverity | default "critical" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "Aurora Discovery failing to create exporters"
+        description: |
+          Aurora Discovery has failed to create exporters {{`{{ $value }}`}} times in the last 10 minutes.
+          This means new Aurora clusters are not being monitored.
+          
+          Check:
+          1. Kubernetes resource quotas
+          2. RBAC permissions
+          3. Container image availability
+          4. Recent job logs for specific errors
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-exporter-creation-failed"
+    
+    # State management alerts
+    - alert: AuroraDiscoveryStateConfigMapLarge
+      expr: |
+        aurora_discovery_state_configmap_size_bytes > {{ .Values.alerting.stateConfigMapSizeThreshold | default 1048576 }}
+      for: {{ .Values.alerting.stateConfigMapSizeFor | default "5m" }}
+      labels:
+        severity: {{ .Values.alerting.stateConfigMapSizeSeverity | default "warning" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "Aurora Discovery state ConfigMap is large"
+        description: |
+          Aurora Discovery state ConfigMap is {{`{{ $value | humanizeBytes }}`}} in size.
+          Large ConfigMaps may impact performance and hit etcd limits.
+          
+          Consider:
+          1. Cleaning up old cluster entries
+          2. Implementing state cleanup logic
+          3. Monitoring cluster count growth
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-large-state"
+    
+    # Performance alerts
+    - alert: AuroraDiscoverySlowExecution
+      expr: |
+        histogram_quantile(0.95, rate(aurora_discovery_execution_duration_seconds_bucket{phase="full_cycle"}[5m])) > {{ .Values.alerting.slowExecutionThreshold | default 1800 }}
+      for: {{ .Values.alerting.slowExecutionFor | default "0m" }}
+      labels:
+        severity: {{ .Values.alerting.slowExecutionSeverity | default "warning" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "Aurora Discovery execution is slow"
+        description: |
+          Aurora Discovery execution is taking {{`{{ $value | humanizeDuration }}`}} (95th percentile).
+          Slow execution may cause CronJob timeouts and delayed cluster discovery.
+          
+          Check:
+          1. Number of Aurora clusters
+          2. AWS API latency
+          3. Resource allocation
+          4. Network connectivity
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-slow-execution"
+    
+    # Cluster monitoring coverage
+    - alert: AuroraDiscoveryNoManagedClusters
+      expr: |
+        sum(aurora_discovery_managed_clusters_total) == 0
+        and
+        aurora_discovery_last_execution_success == 1
+      for: {{ .Values.alerting.noManagedClustersFor | default "10m" }}
+      labels:
+        severity: {{ .Values.alerting.noManagedClustersSeverity | default "info" }}
+        component: aurora-discovery
+        service: database-monitoring
+      annotations:
+        summary: "Aurora Discovery is not managing any clusters"
+        description: |
+          Aurora Discovery is running successfully but not managing any Aurora clusters.
+          This may be expected if no Aurora clusters exist, or may indicate discovery issues.
+          
+          Verify:
+          1. Aurora clusters exist in the configured region
+          2. Clusters have associated Secrets Manager secrets
+          3. AWS permissions are correct
+        runbook_url: "{{ .Values.alerting.runbookUrl }}/aurora-discovery-no-managed-clusters"
+
+{{- end }}

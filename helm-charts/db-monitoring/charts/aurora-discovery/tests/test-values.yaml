@@ -1,0 +1,104 @@
+# Test values for unit testing
+# This file provides various test scenarios for the Helm templates
+
+# Default test scenario
+default:
+  enabled: true
+  schedule: "0 * * * *"
+  image:
+    repository: aurora-discovery
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  aws:
+    region: "us-east-1"
+  kubernetes:
+    namespace: observability
+  state:
+    configMapName: aurora-discovery-state
+  serviceAccount:
+    create: true
+    name: aurora-discovery
+    annotations:
+      eks.amazonaws.com/role-arn: ""
+  rbac:
+    create: true
+  logging:
+    level: INFO
+  cronJob:
+    concurrencyPolicy: Forbid
+    failedJobsHistoryLimit: 3
+    successfulJobsHistoryLimit: 1
+    restartPolicy: OnFailure
+    backoffLimit: 2
+
+# Custom configuration test scenario
+custom:
+  enabled: true
+  schedule: "0 */2 * * *"
+  image:
+    repository: custom-aurora-discovery
+    tag: "2.0.0"
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  aws:
+    region: "us-west-2"
+  kubernetes:
+    namespace: monitoring
+  state:
+    configMapName: custom-state
+  serviceAccount:
+    create: true
+    name: custom-service-account
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/aurora-discovery-role"
+      custom.annotation/key: "custom-value"
+  rbac:
+    create: true
+  logging:
+    level: DEBUG
+  cronJob:
+    concurrencyPolicy: Allow
+    failedJobsHistoryLimit: 5
+    successfulJobsHistoryLimit: 3
+    restartPolicy: Never
+    backoffLimit: 3
+
+# Disabled scenario
+disabled:
+  enabled: false
+
+# RBAC disabled scenario
+rbac-disabled:
+  enabled: true
+  rbac:
+    create: false
+
+# ServiceAccount disabled scenario
+serviceaccount-disabled:
+  enabled: true
+  serviceAccount:
+    create: false
+
+# Global values override scenario
+global-override:
+  enabled: true
+  global:
+    namespace: global-namespace
+    region: eu-west-1
+  kubernetes:
+    namespace: local-namespace
+  aws:
+    region: us-east-1
