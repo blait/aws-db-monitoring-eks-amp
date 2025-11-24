@@ -7,11 +7,12 @@ Main service class that orchestrates Aurora cluster discovery and exporter manag
 import logging
 from typing import Dict, List, Optional
 from collections import defaultdict
+from datetime import datetime
 
 from aws_client import AWSClient
 from state_manager import StateManager
 from resource_manager import ResourceManager
-from models import AuroraCluster
+from models import AuroraCluster, ClusterState
 from metrics import get_metrics
 
 
@@ -22,8 +23,7 @@ class AuroraDiscoveryService:
         self,
         aws_region: str,
         namespace: str,
-        state_configmap_name: str,
-        dry_run: bool = False
+        state_configmap_name: str
     ):
         """Initialize the Aurora Discovery Service.
         
@@ -31,25 +31,22 @@ class AuroraDiscoveryService:
             aws_region: AWS region to scan for Aurora clusters
             namespace: Kubernetes namespace for resources
             state_configmap_name: Name of the ConfigMap for state storage
-            dry_run: If True, perform discovery without making changes
         """
         self.logger = logging.getLogger(__name__)
         self.aws_region = aws_region
         self.namespace = namespace
         self.state_configmap_name = state_configmap_name
-        self.dry_run = dry_run
         
         # Initialize components
         self.aws_client = AWSClient(aws_region)
         self.state_manager = StateManager(namespace, state_configmap_name)
-        self.resource_manager = ResourceManager(namespace, dry_run)
+        self.resource_manager = ResourceManager(namespace)
         self.metrics = get_metrics()
         
         self.logger.info("Aurora Discovery Service initialized", extra={
             "aws_region": aws_region,
             "namespace": namespace,
-            "state_configmap_name": state_configmap_name,
-            "dry_run": dry_run
+            "state_configmap_name": state_configmap_name
         })
     
     def run(self) -> None:
@@ -74,22 +71,16 @@ class AuroraDiscoveryService:
                 
                 # Step 4: Execute resource management actions
                 with self.metrics.time_execution_phase("resource_management"):
-                    if not self.dry_run:
-                        self._execute_actions(actions, current_clusters)
-                    else:
-                        self.logger.info("Dry run mode - skipping resource changes", extra={
-                            "actions": {
-                                "create": len(actions["create"]),
-                                "update": len(actions["update"]),
-                                "delete": len(actions["delete"])
-                            }
-                        })
+                    self._execute_actions(actions, current_clusters, previous_clusters)
                 
                 # Step 5: Update state and metrics
                 with self.metrics.time_execution_phase("state_save"):
-                    if not self.dry_run:
-                        self.state_manager.save_state(current_clusters)
-                        self._update_metrics(current_clusters)
+                    cluster_state = ClusterState(
+                        last_updated=datetime.utcnow(),
+                        clusters=current_clusters
+                    )
+                    self.state_manager.save_state(cluster_state)
+                    self._update_metrics(current_clusters)
             
             # Record successful execution
             self.metrics.record_execution_success()
@@ -172,18 +163,19 @@ class AuroraDiscoveryService:
                 current = current_clusters[cluster_id]
                 previous = previous_clusters[cluster_id]
                 
-                # Check if cluster configuration has changed
-                if (current.endpoint != previous.endpoint or 
-                    current.port != previous.port or 
-                    current.secrets_arn != previous.secrets_arn):
+                # Check if cluster configuration or instances have changed
+                cluster_changed = (current.endpoint != previous.endpoint or 
+                                 current.port != previous.port or 
+                                 current.secrets_arn != previous.secrets_arn)
+                
+                instances_changed = self._instances_changed(current.instances, previous.instances)
+                
+                if cluster_changed or instances_changed:
                     actions["update"].append(cluster_id)
-                    self.logger.info("Cluster configuration changed", extra={
+                    self.logger.info("Cluster or instances changed", extra={
                         "cluster_id": cluster_id,
-                        "changes": {
-                            "endpoint": current.endpoint != previous.endpoint,
-                            "port": current.port != previous.port,
-                            "secrets_arn": current.secrets_arn != previous.secrets_arn
-                        }
+                        "cluster_changed": cluster_changed,
+                        "instances_changed": instances_changed
                     })
         
         # Find clusters to delete (removed clusters)
@@ -200,7 +192,32 @@ class AuroraDiscoveryService:
         
         return actions
     
-    def _execute_actions(self, actions: Dict[str, List[str]], current_clusters: Dict[str, AuroraCluster]) -> None:
+    def _instances_changed(self, current_instances: List, previous_instances: List) -> bool:
+        """Check if instances have changed between states."""
+        # Compare instance identifiers
+        current_ids = {inst.identifier for inst in current_instances}
+        previous_ids = {inst.identifier for inst in previous_instances}
+        
+        # Check for added or removed instances
+        if current_ids != previous_ids:
+            return True
+        
+        # Check for instance configuration changes
+        current_map = {inst.identifier: inst for inst in current_instances}
+        previous_map = {inst.identifier: inst for inst in previous_instances}
+        
+        for inst_id in current_ids:
+            curr = current_map[inst_id]
+            prev = previous_map[inst_id]
+            if (curr.endpoint != prev.endpoint or 
+                curr.port != prev.port or 
+                curr.role != prev.role or
+                curr.status != prev.status):
+                return True
+        
+        return False
+    
+    def _execute_actions(self, actions: Dict[str, List[str]], current_clusters: Dict[str, AuroraCluster], previous_clusters: Dict[str, AuroraCluster]) -> None:
         """Execute the required resource management actions."""
         # Handle deletions first
         for cluster_id in actions["delete"]:
@@ -228,8 +245,36 @@ class AuroraDiscoveryService:
                     })
                     continue
                 
+                # For updates, check if any instances were removed and clean them up
+                if cluster_id in actions["update"]:
+                    previous_cluster = previous_clusters.get(cluster_id)
+                    if previous_cluster:
+                        current_instance_ids = {inst.identifier for inst in cluster.instances}
+                        previous_instance_ids = {inst.identifier for inst in previous_cluster.instances}
+                        removed_instance_ids = previous_instance_ids - current_instance_ids
+                        
+                        if removed_instance_ids:
+                            self.logger.info(f"Detected {len(removed_instance_ids)} removed instances", extra={
+                                "cluster_id": cluster_id,
+                                "removed_instances": list(removed_instance_ids)
+                            })
+                            
+                            for instance_id in removed_instance_ids:
+                                try:
+                                    self.resource_manager.delete_instance_resources(cluster_id, instance_id)
+                                    self.logger.info("Deleted resources for removed instance", extra={
+                                        "cluster_id": cluster_id,
+                                        "instance_id": instance_id
+                                    })
+                                except Exception as e:
+                                    self.logger.error("Failed to delete resources for removed instance", extra={
+                                        "cluster_id": cluster_id,
+                                        "instance_id": instance_id,
+                                        "error": str(e)
+                                    })
+                
                 # Get cluster credentials
-                credentials = self.aws_client.get_cluster_credentials(cluster.secrets_arn)
+                credentials = self.aws_client.get_cluster_credentials(cluster)
                 if not credentials:
                     self.metrics.record_error("CredentialsRetrievalFailed", "aws_client")
                     self.logger.error("Failed to retrieve cluster credentials", extra={

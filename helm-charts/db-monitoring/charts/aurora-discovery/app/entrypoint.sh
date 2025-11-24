@@ -35,55 +35,8 @@ cleanup() {
     exit 0
 }
 
-# Start health check server in background
-start_health_check() {
-    echo "$(date): Starting health check server on port $HEALTH_CHECK_PORT"
-    
-    # Simple HTTP server for health checks
-    python3 -c "
-import http.server
-import socketserver
-import threading
-import sys
-import os
-
-class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(b'{\"status\": \"healthy\", \"service\": \"aurora-discovery\"}')
-        elif self.path == '/ready':
-            # Check if main process is running
-            if os.path.exists('/tmp/aurora-discovery.ready'):
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(b'{\"status\": \"ready\", \"service\": \"aurora-discovery\"}')
-            else:
-                self.send_response(503)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(b'{\"status\": \"not ready\", \"service\": \"aurora-discovery\"}')
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def log_message(self, format, *args):
-        # Suppress default HTTP server logging
-        pass
-
-try:
-    with socketserver.TCPServer(('', $HEALTH_CHECK_PORT), HealthCheckHandler) as httpd:
-        httpd.serve_forever()
-except Exception as e:
-    print(f'Health check server error: {e}', file=sys.stderr)
-" &
-    
-    HEALTH_PID=$!
-    echo "$(date): Health check server started with PID: $HEALTH_PID"
-}
+# Health check is now handled by main.py metrics server
+# No separate health check server needed
 
 # Set up signal handlers
 trap cleanup SIGTERM SIGINT SIGQUIT
@@ -102,11 +55,11 @@ echo "$(date): AWS Region: ${AWS_REGION:-us-east-1}"
 echo "$(date): Namespace: ${NAMESPACE:-observability}"
 echo "$(date): Log Level: ${LOG_LEVEL:-INFO}"
 
-# Start health check server
-start_health_check
+# Health check and metrics are handled by main.py
+# No need for separate health check server
 
 # Create readiness indicator
-touch /tmp/aurora-discovery.ready
+touch /dev/shm/aurora-discovery.ready
 
 # Start the main application
 echo "$(date): Starting Aurora Discovery application with args: $@"
@@ -120,13 +73,8 @@ wait $PID
 EXIT_CODE=$?
 
 # Clean up readiness indicator
-rm -f /tmp/aurora-discovery.ready
+rm -f /dev/shm/aurora-discovery.ready
 
 echo "$(date): Aurora Discovery process completed with exit code: $EXIT_CODE"
-
-# Kill health check server
-if [ -n "$HEALTH_PID" ]; then
-    kill $HEALTH_PID 2>/dev/null || true
-fi
 
 exit $EXIT_CODE

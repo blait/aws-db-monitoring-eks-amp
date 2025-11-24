@@ -78,9 +78,5 @@ Get AWS region from global or local values
 Get namespace from global or local values
 */}}
 {{- define "aurora-discovery.namespace" -}}
-{{- if .Values.global.namespace }}
-{{- .Values.global.namespace }}
-{{- else }}
-{{- .Values.kubernetes.namespace }}
-{{- end }}
+{{- .Release.Namespace }}
 {{- end }}

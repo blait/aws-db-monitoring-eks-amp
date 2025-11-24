@@ -36,11 +36,10 @@ service:
 # AMP configuration
 amp:
   endpoint: ""
-  region: us-east-1
+  region: ""
 
 # Aurora Discovery configuration
-# When enabled, ADOT Collector will use Kubernetes Service Discovery
-# to automatically discover Aurora exporters created by Aurora Discovery CronJob
+# When enabled, ADOT Collector will use Kubernetes Service Discovery to automatically discover Aurora exporters created by Aurora Discovery CronJob
 # When disabled, static MySQL/PostgreSQL exporter configurations are used
 auroraDiscovery:
-  enabled: false
+  enabled: true

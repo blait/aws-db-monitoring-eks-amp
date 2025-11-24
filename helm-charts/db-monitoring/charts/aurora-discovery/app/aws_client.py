@@ -12,7 +12,7 @@ import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 from botocore.config import Config
 
-from models import AuroraCluster, ClusterCredentials
+from models import AuroraCluster, AuroraInstance, ClusterCredentials
 
 
 class AWSClient:
@@ -216,6 +216,9 @@ class AWSClient:
                     "engine": engine
                 })
             
+            # Discover cluster instances
+            instances = self._discover_cluster_instances(cluster_id, cluster_data)
+            
             cluster = AuroraCluster(
                 identifier=cluster_id,
                 engine=engine,
@@ -223,7 +226,8 @@ class AWSClient:
                 port=port,
                 secrets_arn=secrets_arn or "",
                 status=status,
-                last_seen=datetime.utcnow()
+                last_seen=datetime.utcnow(),
+                instances=instances
             )
             
             self.logger.debug("Successfully parsed cluster", extra={
@@ -231,7 +235,8 @@ class AWSClient:
                 "engine": engine,
                 "endpoint": endpoint,
                 "port": port,
-                "has_secrets_arn": bool(secrets_arn)
+                "has_secrets_arn": bool(secrets_arn),
+                "instance_count": len(instances)
             })
             
             return cluster
@@ -248,6 +253,75 @@ class AWSClient:
                 "error_type": type(e).__name__
             })
             return None
+    
+    def _discover_cluster_instances(self, cluster_id: str, cluster_data: Dict) -> List[AuroraInstance]:
+        """Discover instances for a specific cluster.
+        
+        Args:
+            cluster_id: Cluster identifier
+            cluster_data: Cluster data from describe_db_clusters
+            
+        Returns:
+            List of AuroraInstance objects
+        """
+        instances = []
+        
+        try:
+            # Get cluster members from cluster data
+            members = cluster_data.get('DBClusterMembers', [])
+            
+            if not members:
+                self.logger.warning("No cluster members found", extra={"cluster_id": cluster_id})
+                return instances
+            
+            # Fetch detailed instance information
+            for member in members:
+                instance_id = member.get('DBInstanceIdentifier')
+                is_writer = member.get('IsClusterWriter', False)
+                
+                if not instance_id:
+                    continue
+                
+                try:
+                    # Get instance details
+                    response = self.rds_client.describe_db_instances(
+                        DBInstanceIdentifier=instance_id
+                    )
+                    
+                    instance_data = response.get('DBInstances', [])[0] if response.get('DBInstances') else None
+                    if not instance_data:
+                        continue
+                    
+                    instance = AuroraInstance(
+                        identifier=instance_id,
+                        endpoint=instance_data.get('Endpoint', {}).get('Address', ''),
+                        port=instance_data.get('Endpoint', {}).get('Port', 0),
+                        role='writer' if is_writer else 'reader',
+                        availability_zone=instance_data.get('AvailabilityZone', ''),
+                        status=instance_data.get('DBInstanceStatus', 'unknown')
+                    )
+                    
+                    instances.append(instance)
+                    
+                except ClientError as e:
+                    self.logger.warning("Failed to get instance details", extra={
+                        "instance_id": instance_id,
+                        "error": str(e)
+                    })
+                    continue
+            
+            self.logger.debug("Discovered cluster instances", extra={
+                "cluster_id": cluster_id,
+                "instance_count": len(instances)
+            })
+            
+        except Exception as e:
+            self.logger.error("Failed to discover cluster instances", extra={
+                "cluster_id": cluster_id,
+                "error": str(e)
+            })
+        
+        return instances
     
     def get_cluster_by_id(self, cluster_id: str) -> Optional[AuroraCluster]:
         """Get a specific cluster by identifier.
@@ -292,30 +366,34 @@ class AWSClient:
             })
             raise
     
-    def get_cluster_credentials(self, secrets_arn: str) -> Optional[ClusterCredentials]:
+    def get_cluster_credentials(self, cluster: 'AuroraCluster') -> Optional[ClusterCredentials]:
         """Retrieve database credentials from AWS Secrets Manager.
         
         Args:
-            secrets_arn: ARN of the secret containing database credentials
+            cluster: AuroraCluster object containing cluster information
             
         Returns:
             ClusterCredentials object or None if retrieval fails
         """
-        if not secrets_arn:
-            self.logger.warning("Empty secrets ARN provided")
+        if not cluster.secrets_arn:
+            self.logger.warning("Empty secrets ARN provided", extra={
+                "cluster_id": cluster.identifier
+            })
             return None
         
         try:
             self.logger.debug("Retrieving cluster credentials", extra={
-                "secrets_arn": secrets_arn
+                "secrets_arn": cluster.secrets_arn,
+                "cluster_id": cluster.identifier
             })
             
-            response = self.secrets_client.get_secret_value(SecretId=secrets_arn)
+            response = self.secrets_client.get_secret_value(SecretId=cluster.secrets_arn)
             secret_string = response.get('SecretString')
             
             if not secret_string:
                 self.logger.error("Secret contains no string value", extra={
-                    "secrets_arn": secrets_arn
+                    "secrets_arn": cluster.secrets_arn,
+                    "cluster_id": cluster.identifier
                 })
                 return None
             
@@ -324,34 +402,40 @@ class AWSClient:
                 secret_data = json.loads(secret_string)
             except json.JSONDecodeError as e:
                 self.logger.error("Failed to parse secret JSON", extra={
-                    "secrets_arn": secrets_arn,
+                    "secrets_arn": cluster.secrets_arn,
+                    "cluster_id": cluster.identifier,
                     "error": str(e)
                 })
                 return None
             
-            # Extract required fields
-            required_fields = ['host', 'port', 'username', 'password']
+            # Extract required fields (only username and password from secret)
+            required_fields = ['username', 'password']
             missing_fields = [field for field in required_fields if field not in secret_data]
             
             if missing_fields:
                 self.logger.error("Secret missing required fields", extra={
-                    "secrets_arn": secrets_arn,
+                    "secrets_arn": cluster.secrets_arn,
+                    "cluster_id": cluster.identifier,
                     "missing_fields": missing_fields,
                     "available_fields": list(secret_data.keys())
                 })
                 return None
             
-            # Create credentials object
+            # Determine port based on engine type
+            default_port = 3306 if cluster.engine.startswith('aurora-mysql') else 5432
+            
+            # Create credentials object using cluster endpoint and port
             credentials = ClusterCredentials(
-                endpoint=secret_data['host'],
-                port=int(secret_data['port']),
+                endpoint=cluster.endpoint,
+                port=cluster.port or default_port,
                 username=secret_data['username'],
                 password=secret_data['password'],
                 database=secret_data.get('dbname')  # Optional field
             )
             
             self.logger.debug("Successfully retrieved cluster credentials", extra={
-                "secrets_arn": secrets_arn,
+                "secrets_arn": cluster.secrets_arn,
+                "cluster_id": cluster.identifier,
                 "endpoint": credentials.endpoint,
                 "port": credentials.port,
                 "username": credentials.username,
@@ -365,30 +449,35 @@ class AWSClient:
             
             if error_code == 'ResourceNotFoundException':
                 self.logger.error("Secret not found", extra={
-                    "secrets_arn": secrets_arn,
+                    "secrets_arn": cluster.secrets_arn,
+                    "cluster_id": cluster.identifier,
                     "error_code": error_code
                 })
             elif error_code == 'AccessDenied':
                 self.logger.error("Access denied for secret retrieval", extra={
-                    "secrets_arn": secrets_arn,
+                    "secrets_arn": cluster.secrets_arn,
+                    "cluster_id": cluster.identifier,
                     "error_code": error_code,
                     "required_permission": "secretsmanager:GetSecretValue"
                 })
             elif error_code == 'InvalidRequestException':
                 self.logger.error("Invalid secret ARN format", extra={
-                    "secrets_arn": secrets_arn,
+                    "secrets_arn": cluster.secrets_arn,
+                    "cluster_id": cluster.identifier,
                     "error_code": error_code
                 })
             elif error_code == 'Throttling':
                 self.logger.warning("Secrets Manager API throttling", extra={
-                    "secrets_arn": secrets_arn,
+                    "secrets_arn": cluster.secrets_arn,
+                    "cluster_id": cluster.identifier,
                     "error_code": error_code
                 })
                 # Implement exponential backoff for throttling
                 time.sleep(2 ** 1)  # Start with 2 second delay
             else:
                 self.logger.error("Secrets Manager API error", extra={
-                    "secrets_arn": secrets_arn,
+                    "secrets_arn": cluster.secrets_arn,
+                    "cluster_id": cluster.identifier,
                     "error_code": error_code,
                     "error_message": str(e)
                 })
@@ -397,7 +486,8 @@ class AWSClient:
             
         except BotoCoreError as e:
             self.logger.error("AWS SDK error during secret retrieval", extra={
-                "secrets_arn": secrets_arn,
+                "secrets_arn": cluster.secrets_arn,
+                "cluster_id": cluster.identifier,
                 "error": str(e),
                 "error_type": type(e).__name__
             })
@@ -405,14 +495,16 @@ class AWSClient:
             
         except ValueError as e:
             self.logger.error("Invalid port value in secret", extra={
-                "secrets_arn": secrets_arn,
+                "secrets_arn": cluster.secrets_arn,
+                "cluster_id": cluster.identifier,
                 "error": str(e)
             })
             return None
             
         except Exception as e:
             self.logger.error("Unexpected error retrieving secret", extra={
-                "secrets_arn": secrets_arn,
+                "secrets_arn": cluster.secrets_arn,
+                "cluster_id": cluster.identifier,
                 "error": str(e),
                 "error_type": type(e).__name__
             })

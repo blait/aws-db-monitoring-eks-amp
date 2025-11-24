@@ -109,87 +109,113 @@ data:
               - __meta_kubernetes_service_name
               target_label: kubernetes_name
 
+          # TEST: Kubernetes SD - Namespace only filter
+          - job_name: test-namespace-only
+            kubernetes_sd_configs:
+            - role: service
+            relabel_configs:
+            # ONLY filter by namespace - nothing else
+            - source_labels: [__meta_kubernetes_namespace]
+              action: keep
+              regex: {{ .Values.global.namespace | default "observability" }}
+            # Add all metadata as labels for debugging
+            - source_labels: [__meta_kubernetes_service_name]
+              target_label: debug_service_name
+            - source_labels: [__meta_kubernetes_service_label_app]
+              target_label: debug_app_label
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: debug_namespace
+
+          # TEST: Aurora Exporters - Minimal filtering for debugging
+          - job_name: aurora-test-all
+            kubernetes_sd_configs:
+            - role: service
+            relabel_configs:
+            # Filter by namespace using relabel_configs instead
+            - source_labels: [__meta_kubernetes_namespace]
+              action: keep
+              regex: {{ .Values.global.namespace | default "observability" }}
+            # Only filter by app label, no other conditions
+            - source_labels: [__meta_kubernetes_service_label_app]
+              action: keep
+              regex: aurora-exporter
+            # Add all metadata as labels for debugging
+            - source_labels: [__meta_kubernetes_service_label_component]
+              target_label: debug_component
+            - source_labels: [__meta_kubernetes_service_label_role]
+              target_label: debug_role
+            - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+              target_label: debug_scrape
+            - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_port]
+              target_label: debug_port
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: debug_namespace
+
           # Aurora MySQL Exporters - Service Discovery
           - job_name: aurora-mysql-exporters
             kubernetes_sd_configs:
             - role: service
-              namespaces:
-                names: [{{ .Values.global.namespace | default "observability" }}]
             relabel_configs:
-            - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+            # Filter by namespace first
+            - source_labels: [__meta_kubernetes_namespace]
+              action: keep
+              regex: {{ .Values.global.namespace | default "observability" }}
+            - source_labels: [__meta_kubernetes_service_label_app]
               action: keep
               regex: aurora-exporter
-            - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_component]
+            - source_labels: [__meta_kubernetes_service_label_component]
               action: keep
-              regex: mysql-exporter
+              regex: mysql
             - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
               action: keep
               regex: true
-            - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
-              action: replace
-              target_label: __metrics_path__
-              regex: (.+)
             - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
               action: replace
               regex: ([^:]+)(?::\d+)?;(\d+)
-              replacement: $1:$2
+              replacement: $$1:$$2
               target_label: __address__
-            - source_labels: [__meta_kubernetes_service_label_aurora_aws_cluster_identifier]
+            - source_labels: [__meta_kubernetes_service_annotation_aurora_aws_cluster_identifier]
               action: replace
-              target_label: aurora_cluster
-            - source_labels: [__meta_kubernetes_service_label_aurora_aws_engine]
+              target_label: cluster_id
+            - source_labels: [__meta_kubernetes_service_annotation_aurora_aws_instance_identifier]
               action: replace
-              target_label: aurora_engine
-            - source_labels: [__meta_kubernetes_namespace]
+              target_label: instance_id
+            - source_labels: [__meta_kubernetes_service_label_role]
               action: replace
-              target_label: kubernetes_namespace
-            - source_labels: [__meta_kubernetes_service_name]
-              action: replace
-              target_label: kubernetes_service_name
-            - action: replace
-              target_label: job
-              replacement: aurora-mysql-exporters
+              target_label: role
 
           # Aurora PostgreSQL Exporters - Service Discovery
           - job_name: aurora-postgresql-exporters
             kubernetes_sd_configs:
             - role: service
-              namespaces:
-                names: [{{ .Values.global.namespace | default "observability" }}]
             relabel_configs:
-            - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+            # Filter by namespace first
+            - source_labels: [__meta_kubernetes_namespace]
+              action: keep
+              regex: {{ .Values.global.namespace | default "observability" }}
+            - source_labels: [__meta_kubernetes_service_label_app]
               action: keep
               regex: aurora-exporter
-            - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_component]
+            - source_labels: [__meta_kubernetes_service_label_component]
               action: keep
-              regex: postgresql-exporter
+              regex: postgresql
             - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
               action: keep
               regex: true
-            - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
-              action: replace
-              target_label: __metrics_path__
-              regex: (.+)
             - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
               action: replace
               regex: ([^:]+)(?::\d+)?;(\d+)
-              replacement: $1:$2
+              replacement: $$1:$$2
               target_label: __address__
-            - source_labels: [__meta_kubernetes_service_label_aurora_aws_cluster_identifier]
+            - source_labels: [__meta_kubernetes_service_annotation_aurora_aws_cluster_identifier]
               action: replace
-              target_label: aurora_cluster
-            - source_labels: [__meta_kubernetes_service_label_aurora_aws_engine]
+              target_label: cluster_id
+            - source_labels: [__meta_kubernetes_service_annotation_aurora_aws_instance_identifier]
               action: replace
-              target_label: aurora_engine
-            - source_labels: [__meta_kubernetes_namespace]
+              target_label: instance_id
+            - source_labels: [__meta_kubernetes_service_label_role]
               action: replace
-              target_label: kubernetes_namespace
-            - source_labels: [__meta_kubernetes_service_name]
-              action: replace
-              target_label: kubernetes_service_name
-            - action: replace
-              target_label: job
-              replacement: aurora-postgresql-exporters
+              target_label: role
 
           # MySQL Exporters - Static configuration (cluster-based) - Legacy support
           {{- if not .Values.auroraDiscovery.enabled }}

@@ -19,17 +19,42 @@ from aurora_discovery import AuroraDiscoveryService
 from metrics import get_metrics, initialize_metrics
 
 
+class StructuredFormatter(logging.Formatter):
+    """Custom formatter to include extra fields in JSON logs."""
+    
+    def format(self, record):
+        # Base log structure
+        log_data = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage()
+        }
+        
+        # Add extra fields if present
+        if hasattr(record, 'error'):
+            log_data['error'] = record.error
+        if hasattr(record, 'error_type'):
+            log_data['error_type'] = record.error_type
+        if hasattr(record, 'traceback'):
+            log_data['traceback'] = record.traceback
+        
+        import json
+        return json.dumps(log_data)
+
+
 def setup_logging(log_level: str = "INFO") -> None:
     """Configure structured logging with the specified level."""
     # Convert string level to logging constant
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
     
-    # Configure logging format for structured output
+    # Configure logging with custom formatter
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(StructuredFormatter(datefmt='%Y-%m-%dT%H:%M:%S'))
+    
     logging.basicConfig(
         level=numeric_level,
-        format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
-        datefmt='%Y-%m-%dT%H:%M:%S',
-        stream=sys.stdout
+        handlers=[handler]
     )
     
     # Set boto3 and kubernetes client logging to WARNING to reduce noise
@@ -105,12 +130,6 @@ def parse_arguments() -> argparse.Namespace:
     )
     
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Perform discovery without making changes to Kubernetes resources"
-    )
-    
-    parser.add_argument(
         "--metrics-port",
         type=int,
         default=int(os.getenv("METRICS_PORT", "8080")),
@@ -133,6 +152,20 @@ def main() -> int:
         setup_logging(args.log_level)
         logger = logging.getLogger(__name__)
         
+        # Load Kubernetes configuration (once for all components)
+        try:
+            from kubernetes import config
+            config.load_incluster_config()
+            logger.info("Loaded in-cluster Kubernetes configuration")
+        except Exception:
+            try:
+                from kubernetes import config
+                config.load_kube_config()
+                logger.info("Loaded Kubernetes configuration from kubeconfig")
+            except Exception as e:
+                logger.error(f"Failed to load Kubernetes configuration: {e}")
+                return 1
+        
         # Initialize metrics
         initialize_metrics()
         
@@ -154,7 +187,6 @@ def main() -> int:
             "aws_region": args.aws_region,
             "namespace": args.namespace,
             "state_configmap_name": args.state_configmap_name,
-            "dry_run": args.dry_run,
             "metrics_port": args.metrics_port
         })
         
@@ -162,8 +194,7 @@ def main() -> int:
         service = AuroraDiscoveryService(
             aws_region=args.aws_region,
             namespace=args.namespace,
-            state_configmap_name=args.state_configmap_name,
-            dry_run=args.dry_run
+            state_configmap_name=args.state_configmap_name
         )
         
         # Execute the discovery and management cycle

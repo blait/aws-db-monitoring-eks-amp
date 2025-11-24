@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::891376935319:oidc-provider/oidc.eks.ap-northeast-2.amazonaws.com/id/F3BE482EC638C6D93CA4B56EB19F28CE"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.ap-northeast-2.amazonaws.com/id/F3BE482EC638C6D93CA4B56EB19F28CE:sub": "system:serviceaccount:observability:aurora-discovery",
+          "oidc.eks.ap-northeast-2.amazonaws.com/id/F3BE482EC638C6D93CA4B56EB19F28CE:aud": "sts.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

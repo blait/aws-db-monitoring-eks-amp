@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  ECR Stack for Aurora Discovery Container Images
+  This template creates an ECR repository for the Aurora Discovery application.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: aurora-eks-amp-monitoring
+    Description: Environment name used for resource naming and tagging
+
+  ImageRetentionCount:
+    Type: Number
+    Default: 10
+    Description: Number of images to retain in the repository
+
+Resources:
+  ##############################################################################
+  # ECR Repository for Aurora Discovery
+  ##############################################################################
+  AuroraDiscoveryRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${EnvironmentName}-aurora-discovery
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last ${ImageRetentionCount} images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": ${ImageRetentionCount}
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-aurora-discovery
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  RepositoryUri:
+    Description: URI of the Aurora Discovery ECR repository
+    Value: !GetAtt AuroraDiscoveryRepository.RepositoryUri
+    Export:
+      Name: !Sub ${AWS::StackName}-RepositoryUri
+
+  RepositoryArn:
+    Description: ARN of the Aurora Discovery ECR repository
+    Value: !GetAtt AuroraDiscoveryRepository.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-RepositoryArn
+
+  RepositoryName:
+    Description: Name of the Aurora Discovery ECR repository
+    Value: !Ref AuroraDiscoveryRepository
+    Export:
+      Name: !Sub ${AWS::StackName}-RepositoryName

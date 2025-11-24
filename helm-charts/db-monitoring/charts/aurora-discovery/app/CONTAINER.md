@@ -7,14 +7,21 @@ This directory contains the containerized Aurora Discovery application that auto
 ### Using the build script (recommended):
 
 ```bash
-# Build with default settings
+# Build with default settings (local only)
 ./build.sh
 
 # Build with custom image name and tag
 ./build.sh --image-name my-aurora-discovery --tag v1.0.0
 
-# Build and push to registry
-./build.sh --registry my-registry.com --tag v1.0.0 --push
+# Build and push to ECR (automatically handles authentication)
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export AWS_REGION=$(aws configure get region)
+
+./build.sh \
+  --registry ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
+  --image-name aurora-eks-amp-monitoring-aurora-discovery \
+  --tag 1.0.0 \
+  --push
 
 # Build for multiple platforms
 ./build.sh --platform linux/amd64,linux/arm64
@@ -28,6 +35,19 @@ docker build -t aurora-discovery:latest .
 
 # Build for specific platform
 docker build --platform linux/amd64 -t aurora-discovery:latest .
+
+# Tag and push to ECR
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export AWS_REGION=$(aws configure get region)
+export ECR_REPO=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/aurora-eks-amp-monitoring-aurora-discovery
+
+# Authenticate to ECR
+aws ecr get-login-password --region ${AWS_REGION} | \
+  docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+# Tag and push
+docker tag aurora-discovery:latest ${ECR_REPO}:1.0.0
+docker push ${ECR_REPO}:1.0.0
 ```
 
 ## Container Features

@@ -118,10 +118,6 @@ aws cloudformation create-stack \
     ParameterKey=DatabaseSubnets,ParameterValue=\"$DATABASE_SUBNETS\" \
     ParameterKey=PrivateSubnetCidrs,ParameterValue=\"$PRIVATE_SUBNET_CIDRS\" \
     ParameterKey=PublicSubnets,ParameterValue=\"$PUBLIC_SUBNETS\" \
-    ParameterKey=MySQLMasterUsername,ParameterValue=admin \
-    ParameterKey=MySQLMasterPassword,ParameterValue=adminadmin \
-    ParameterKey=PostgreSQLMasterUsername,ParameterValue=root \
-    ParameterKey=PostgreSQLMasterPassword,ParameterValue=rootroot \
     ParameterKey=SQLServerMasterUsername,ParameterValue=admin \
     ParameterKey=SQLServerMasterPassword,ParameterValue=AdminAdmin123! \
   --capabilities CAPABILITY_IAM 
@@ -196,6 +192,7 @@ Create an EKS cluster using the optimized version for ADOT compatibility:
 export PRIVATE_SUBNET_1=$(echo $PRIVATE_SUBNETS | cut -d',' -f1)
 export PRIVATE_SUBNET_2=$(echo $PRIVATE_SUBNETS | cut -d',' -f2)
 export PRIVATE_SUBNET_3=$(echo $PRIVATE_SUBNETS | cut -d',' -f3)
+export CLUSTER_NAME="${WORKSHOP_NAME}-eks"
 
 # Create the EKS cluster (15-20 minutes)
 envsubst < eks-cluster.yaml > eks-cluster-resolved.yaml
@@ -204,12 +201,12 @@ eksctl create cluster -f eks-cluster-resolved.yaml
 # Enable OIDC provider
 eksctl utils associate-iam-oidc-provider \
   --region $AWS_REGION \
-  --cluster ${WORKSHOP_NAME}-eks \
+  --cluster ${CLUSTER_NAME} \
   --approve
 
 # Get OIDC provider URL
 export OIDC_PROVIDER=$(aws eks describe-cluster \
-  --name ${WORKSHOP_NAME}-eks \
+  --name ${CLUSTER_NAME} \
   --query "cluster.identity.oidc.issuer" \
   --output text | sed -e "s/^https:\/\///")
 
@@ -334,6 +331,72 @@ export AMG_WORKSPACE_ID=<your-workspace-id>
 echo "AMG Workspace ID: $AMG_WORKSPACE_ID"
 ```
 
+<!-- ## Module 5.5: Container Image Setup (Aurora Discovery)
+
+Before deploying the monitoring stack, set up the ECR repository and build the Aurora Discovery container image:
+
+### Step 1: Create ECR Repository
+
+```bash
+# Deploy the ECR stack
+aws cloudformation create-stack \
+  --stack-name ${WORKSHOP_NAME}-ecr \
+  --template-body file://ecr-stack.yaml \
+  --parameters ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME}
+
+# Wait for stack creation to complete
+aws cloudformation wait stack-create-complete \
+  --stack-name ${WORKSHOP_NAME}-ecr
+
+# Get the ECR repository URI
+export ECR_REPOSITORY_URI=$(aws cloudformation describe-stacks \
+  --stack-name ${WORKSHOP_NAME}-ecr \
+  --query 'Stacks[0].Outputs[?OutputKey==`RepositoryUri`].OutputValue' \
+  --output text)
+
+echo "ECR Repository URI: ${ECR_REPOSITORY_URI}"
+```
+
+### Step 2: Build and Push Container Image
+
+```bash
+# Navigate to the Aurora Discovery application directory
+cd helm-charts/db-monitoring/charts/aurora-discovery/app
+
+# Authenticate Docker to ECR
+aws ecr get-login-password --region ${AWS_REGION} | \
+  docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+# Build and push using the build script
+./build.sh \
+  --registry ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
+  --image-name ${WORKSHOP_NAME}-aurora-discovery \
+  --tag 1.0.0 \
+  --push
+
+# Also tag and push as latest
+./build.sh \
+  --registry ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
+  --image-name ${WORKSHOP_NAME}-aurora-discovery \
+  --tag latest \
+  --push
+
+# Return to repository root
+cd ../../../../..
+
+echo "Container image setup complete!"
+```
+
+### Step 3: Verify Image in ECR
+
+```bash
+# List images in the repository
+aws ecr describe-images \
+  --repository-name ${WORKSHOP_NAME}-aurora-discovery \
+  --query 'imageDetails[*].[imageTags[0],imagePushedAt,imageSizeInBytes]' \
+  --output table
+```
+
 ## Module 6: Deploy Monitoring Stack with Helm
 
 Instead of manually deploying multiple YAML files, we use a single command:
@@ -391,7 +454,7 @@ helm rollback db-monitoring 1 -n observability
 
 # Uninstall
 helm uninstall db-monitoring -n observability
-```
+``` -->
 
 ## Module 7: Dashboard Configuration
 

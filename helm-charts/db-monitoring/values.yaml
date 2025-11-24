@@ -1,7 +1,7 @@
 # Production environment values
 global:
   namespace: observability
-  region: ${AWS_REGION}
+  region: ""
   clusterName: ""
   rbac:
     create: true
@@ -10,16 +10,16 @@ global:
 amp:
   workspaceId: ""
   endpoint: ""
-  region: ${AWS_REGION}
+  region: ""
 
 # Aurora Discovery configuration - automatic Aurora cluster discovery and monitoring
 aurora-discovery:
   enabled: true # Enabled by default - primary Aurora monitoring system
   schedule: "0 * * * *" # Every hour
   image:
-    repository: aurora-discovery
-    tag: "1.0.0"
-    pullPolicy: IfNotPresent
+    repository: ""
+    tag: "latest"
+    pullPolicy: Always
   resources:
     requests:
       cpu: 200m
@@ -28,19 +28,22 @@ aurora-discovery:
       cpu: 500m
       memory: 512Mi
   aws:
-    region: ${AWS_REGION}
+    region: ""
   serviceAccount:
     create: true
     name: aurora-discovery
     annotations:
       eks.amazonaws.com/role-arn: "" # Must be set to IAM role ARN with required permissions
-  stateConfigMap:
-    name: aurora-discovery-state
+  state:
+    configMapName: aurora-discovery-state
   logging:
     level: INFO
-  concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 1
+  cronJob:
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 1
+    restartPolicy: OnFailure
+    backoffLimit: 2
 
 # ADOT Collector configuration - values passed to subchart
 adot-collector:
@@ -49,7 +52,7 @@ adot-collector:
     create: true
     name: adot-collector
     annotations:
-      eks.amazonaws.com/role-arn: ""
+      eks.amazonaws.com/role-arn: "" # Must be set to IAM role ARN with AMP write permissions
   resources:
     requests:
       cpu: 500m
@@ -61,8 +64,10 @@ adot-collector:
     scrapeInterval: 15s
     scrapeTimeout: 10s
   amp:
-    endpoint: ""
-    region: ${AWS_REGION}
+    endpoint: "" # Must be set to AMP workspace endpoint (e.g., https://aps-workspaces.ap-northeast-2.amazonaws.com/workspaces/ws-xxx/api/v1/remote_write)
+    region: ""
+  auroraDiscovery:
+    enabled: true # Enable Aurora Discovery integration (disable legacy static configs)
 
 # redis-exporter configuration - for ElastiCache/Redis monitoring (separate from Aurora)
 redis-exporter:

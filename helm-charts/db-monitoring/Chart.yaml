@@ -23,6 +23,7 @@ maintainers:
 dependencies:
   - name: adot-collector
     version: "1.0.0"
+    repository: "file://./charts/adot-collector"
     condition: adot-collector.enabled
   - name: aurora-discovery
     version: "1.0.0"
@@ -35,3 +36,4 @@ dependencies:
   - name: sql-exporter
     version: "0.1.0"
     condition: sql-exporter.enabled
+    repository: "file://./charts/sql-exporter"

@@ -75,6 +75,33 @@ echo "Build completed successfully!"
 # Push if requested
 if [ "$PUSH" = true ]; then
     echo "Pushing image to registry..."
+    
+    # If registry is ECR, authenticate first
+    if [[ "$REGISTRY" == *.dkr.ecr.*.amazonaws.com ]]; then
+        echo "Detected ECR registry, authenticating..."
+        
+        # Extract region from ECR URL
+        ECR_REGION=$(echo "$REGISTRY" | sed -n 's/.*\.dkr\.ecr\.\([^.]*\)\.amazonaws\.com/\1/p')
+        
+        if [ -z "$ECR_REGION" ]; then
+            echo "Warning: Could not extract region from ECR URL, using default region"
+            ECR_REGION=$(aws configure get region)
+        fi
+        
+        echo "ECR Region: $ECR_REGION"
+        
+        # Authenticate Docker to ECR
+        aws ecr get-login-password --region "$ECR_REGION" | \
+            docker login --username AWS --password-stdin "$REGISTRY"
+        
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to authenticate to ECR"
+            exit 1
+        fi
+        
+        echo "ECR authentication successful"
+    fi
+    
     docker push "$FULL_IMAGE_NAME"
     echo "Push completed successfully!"
 fi

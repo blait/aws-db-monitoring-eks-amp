@@ -133,12 +133,11 @@ Resources:
     Type: AWS::RDS::DBCluster
     Properties:
       Engine: aurora-mysql
-      EngineVersion: 8.0.mysql_aurora.3.04.1
+      EngineVersion: 8.0.mysql_aurora.3.08.2
       DatabaseName: aurora_mysql_db
       MasterUsername: admin
       ManageMasterUserPassword: true
       MasterUserSecret:
-        Description: "Aurora MySQL cluster master user credentials"
         KmsKeyId: alias/aws/secretsmanager
       DBSubnetGroupName: !Ref MySQLDBSubnetGroup
       Port: 3306 # Explicitly set MySQL to use standard port 3306
@@ -216,12 +215,11 @@ Resources:
     Type: AWS::RDS::DBCluster
     Properties:
       Engine: aurora-postgresql
-      EngineVersion: 15.3
+      EngineVersion: 17.4
       DatabaseName: aurora_postgresql_db
       MasterUsername: postgres
       ManageMasterUserPassword: true
       MasterUserSecret:
-        Description: "Aurora PostgreSQL cluster master user credentials"
         KmsKeyId: alias/aws/secretsmanager
       DBSubnetGroupName: !Ref PostgreSQLDBSubnetGroup
       Port: 5432 # Explicitly set PostgreSQL to use standard port 5432
