@@ -466,19 +466,20 @@ class ResourceManager:
     
     def _create_instance_secret(self, cluster: AuroraCluster, instance: AuroraInstance, credentials: ClusterCredentials) -> client.V1Secret:
         """Create a Secret for an instance exporter."""
-        _, _, secret_name = self._get_instance_resource_names(cluster, instance)
+        deployment_name, _, secret_name = self._get_instance_resource_names(cluster, instance)
         engine_short = cluster.engine.replace("aurora-", "")
         
-        # Generate short hash for unique identification
-        import hashlib
-        instance_hash = hashlib.md5(instance.identifier.encode()).hexdigest()[:8]
+        # # Generate short hash for unique identification
+        # import hashlib
+        # instance_hash = hashlib.md5(instance.identifier.encode()).hexdigest()[:8]
         
-        # Minimal labels (short values only)
         labels = {
-            "app": "aurora-exporter",
-            "component": engine_short,
-            "role": instance.role,
-            "instance": instance_hash
+            "app.kubernetes.io/name": "aurora-exporter",
+            "app.kubernetes.io/instance": deployment_name,
+            "app.kubernetes.io/component": "exporter",
+            "app.kubernetes.io/part-of": "monitoring",
+            "target-engine": engine_short,
+            "target-role": instance.role
         }
         
         # Annotations for full identifiers
@@ -535,16 +536,23 @@ class ResourceManager:
         exporter_config = self._get_exporter_config(cluster.engine)
         engine_short = cluster.engine.replace("aurora-", "")
         
-        # Generate short hash for unique identification
-        import hashlib
-        instance_hash = hashlib.md5(instance.identifier.encode()).hexdigest()[:8]
+        # # Generate short hash for unique identification
+        # import hashlib
+        # instance_hash = hashlib.md5(instance.identifier.encode()).hexdigest()[:8]
         
-        # Minimal labels (short values only)
         labels = {
-            "app": "aurora-exporter",
-            "component": engine_short,
-            "role": instance.role,
-            "instance": instance_hash
+            "app.kubernetes.io/name": "aurora-exporter",
+            "app.kubernetes.io/instance": deployment_name,
+            "app.kubernetes.io/component": "exporter",
+            "app.kubernetes.io/part-of": "monitoring",
+            "target-engine": engine_short,
+            "target-role": instance.role
+        }
+        
+        # Minimal selector
+        selector = {
+            "app.kubernetes.io/name": "aurora-exporter",
+            "app.kubernetes.io/instance": deployment_name
         }
         
         # Annotations for full identifiers
@@ -553,12 +561,6 @@ class ResourceManager:
             "aurora.aws/instance-identifier": instance.identifier,
             "aurora.aws/availability-zone": instance.availability_zone,
             "aurora.aws/engine": cluster.engine
-        }
-        
-        # Minimal selector
-        selector = {
-            "app": "aurora-exporter",
-            "instance": instance_hash
         }
         
         return client.V1Deployment(
@@ -606,26 +608,28 @@ class ResourceManager:
     
     def _create_instance_service(self, cluster: AuroraCluster, instance: AuroraInstance) -> client.V1Service:
         """Create a Service for an instance exporter."""
-        _, service_name, _ = self._get_instance_resource_names(cluster, instance)
+        deployment_name, service_name, _ = self._get_instance_resource_names(cluster, instance)
         exporter_config = self._get_exporter_config(cluster.engine)
         engine_short = cluster.engine.replace("aurora-", "")
         
-        # Generate short hash for unique identification
-        import hashlib
-        instance_hash = hashlib.md5(instance.identifier.encode()).hexdigest()[:8]
+        # # Generate short hash for unique identification
+        # import hashlib
+        # instance_hash = hashlib.md5(instance.identifier.encode()).hexdigest()[:8]
         
         # Minimal labels (short values only)
         labels = {
-            "app": "aurora-exporter",
-            "component": engine_short,
-            "role": instance.role,
-            "instance": instance_hash
+            "app.kubernetes.io/name": "aurora-exporter",
+            "app.kubernetes.io/instance": service_name,
+            "app.kubernetes.io/component": "exporter",
+            "app.kubernetes.io/part-of": "monitoring",
+            "target-engine": engine_short,
+            "target-role": instance.role
         }
         
         # Minimal selector
         selector = {
-            "app": "aurora-exporter",
-            "instance": instance_hash
+            "app.kubernetes.io/name": "aurora-exporter",
+            "app.kubernetes.io/instance": deployment_name
         }
         
         # Annotations for full identifiers and Prometheus

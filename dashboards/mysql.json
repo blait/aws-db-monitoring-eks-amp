@@ -4758,6 +4758,52 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
+        "definition": "label_values(mysql_up{job=\"aurora-mysql-exporters\"},cluster_id)",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "PROM_DB_CLUSTER",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(mysql_up{job=\"aurora-mysql-exporters\"},cluster_id)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(mysql_up{job=\"aurora-mysql-exporters\", cluster_id=\"$PROM_DB_CLUSTER\"},instance)",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "PROM_DB_INSTANCE",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(mysql_up{job=\"aurora-mysql-exporters\", cluster_id=\"$PROM_DB_CLUSTER\"},instance)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
         "definition": "label_values(mysql_up,instance)",
         "hide": 0,
         "includeAll": false,

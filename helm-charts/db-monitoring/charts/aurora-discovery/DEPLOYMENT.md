@@ -459,7 +459,7 @@ aws rds modify-db-cluster \
     --manage-master-user-password
 ```
 
-## Monitoring Aurora Discovery
+<!-- ## Monitoring Aurora Discovery
 
 ### Check CronJob Execution
 
@@ -518,7 +518,7 @@ kubectl get jobs -n observability -l app.kubernetes.io/name=aurora-discovery
 
 # Check logs
 kubectl logs -n observability job/aurora-discovery-<timestamp>
-```
+``` -->
 
 ## Configuration Options
 
@@ -612,7 +612,7 @@ aurora-discovery:
   failedJobsHistoryLimit: 3
 ```
 
-## Migration from Static Exporters
+<!-- ## Migration from Static Exporters
 
 ### Phase 1: Parallel Deployment
 
@@ -641,9 +641,9 @@ aurora-discovery:
 - [ ] Grafana dashboards are displaying data from dynamic exporters
 - [ ] Alerting rules are working with new metric labels
 - [ ] Static exporter configurations removed
-- [ ] Documentation updated
+- [ ] Documentation updated -->
 
-## Monitoring Aurora Discovery
+<!-- ## Monitoring Aurora Discovery
 
 ### Key Metrics to Monitor
 
@@ -683,9 +683,9 @@ aurora-discovery:
   annotations:
     summary: "High error rate in Aurora Discovery"
     description: "Aurora Discovery is experiencing a high error rate: {{ $value }} errors/sec"
-```
+``` -->
 
-## Backup and Recovery
+<!-- ## Backup and Recovery
 
 ### State Backup
 
@@ -713,17 +713,17 @@ kubectl get deployments,services,secrets -n observability -l app.kubernetes.io/n
 
 # Clean up specific exporter
 kubectl delete deployment,service,secret -n observability -l aurora.aws/cluster-identifier=cluster-name
-```
+``` -->
 
-## Security Best Practices
+<!-- ## Security Best Practices
 
 1. **Least Privilege IAM**: Only grant minimum required AWS permissions
 2. **Secret Rotation**: Regularly rotate Aurora cluster passwords in Secrets Manager
 3. **Network Policies**: Implement Kubernetes Network Policies to restrict traffic
 4. **Resource Quotas**: Set appropriate resource quotas for the observability namespace
-5. **RBAC**: Use Kubernetes RBAC to limit access to Aurora Discovery resources
+5. **RBAC**: Use Kubernetes RBAC to limit access to Aurora Discovery resources -->
 
-## Performance Tuning
+<!-- ## Performance Tuning
 
 ### Resource Optimization
 
@@ -741,7 +741,7 @@ kubectl delete deployment,service,secret -n observability -l aurora.aws/cluster-
 
 1. **AWS API Limits**: Monitor AWS API throttling and implement backoff strategies
 2. **Kubernetes API Limits**: Consider cluster size when setting resource limits
-3. **State ConfigMap Size**: Monitor ConfigMap size with large numbers of clusters
+3. **State ConfigMap Size**: Monitor ConfigMap size with large numbers of clusters -->
 
 ## Updating the Container Image
 

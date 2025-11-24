@@ -109,48 +109,6 @@ data:
               - __meta_kubernetes_service_name
               target_label: kubernetes_name
 
-          # TEST: Kubernetes SD - Namespace only filter
-          - job_name: test-namespace-only
-            kubernetes_sd_configs:
-            - role: service
-            relabel_configs:
-            # ONLY filter by namespace - nothing else
-            - source_labels: [__meta_kubernetes_namespace]
-              action: keep
-              regex: {{ .Values.global.namespace | default "observability" }}
-            # Add all metadata as labels for debugging
-            - source_labels: [__meta_kubernetes_service_name]
-              target_label: debug_service_name
-            - source_labels: [__meta_kubernetes_service_label_app]
-              target_label: debug_app_label
-            - source_labels: [__meta_kubernetes_namespace]
-              target_label: debug_namespace
-
-          # TEST: Aurora Exporters - Minimal filtering for debugging
-          - job_name: aurora-test-all
-            kubernetes_sd_configs:
-            - role: service
-            relabel_configs:
-            # Filter by namespace using relabel_configs instead
-            - source_labels: [__meta_kubernetes_namespace]
-              action: keep
-              regex: {{ .Values.global.namespace | default "observability" }}
-            # Only filter by app label, no other conditions
-            - source_labels: [__meta_kubernetes_service_label_app]
-              action: keep
-              regex: aurora-exporter
-            # Add all metadata as labels for debugging
-            - source_labels: [__meta_kubernetes_service_label_component]
-              target_label: debug_component
-            - source_labels: [__meta_kubernetes_service_label_role]
-              target_label: debug_role
-            - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
-              target_label: debug_scrape
-            - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_port]
-              target_label: debug_port
-            - source_labels: [__meta_kubernetes_namespace]
-              target_label: debug_namespace
-
           # Aurora MySQL Exporters - Service Discovery
           - job_name: aurora-mysql-exporters
             kubernetes_sd_configs:
@@ -160,10 +118,10 @@ data:
             - source_labels: [__meta_kubernetes_namespace]
               action: keep
               regex: {{ .Values.global.namespace | default "observability" }}
-            - source_labels: [__meta_kubernetes_service_label_app]
+            - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
               action: keep
               regex: aurora-exporter
-            - source_labels: [__meta_kubernetes_service_label_component]
+            - source_labels: [__meta_kubernetes_service_label_target_engine]
               action: keep
               regex: mysql
             - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
@@ -180,7 +138,7 @@ data:
             - source_labels: [__meta_kubernetes_service_annotation_aurora_aws_instance_identifier]
               action: replace
               target_label: instance_id
-            - source_labels: [__meta_kubernetes_service_label_role]
+            - source_labels: [__meta_kubernetes_service_label_target_role]
               action: replace
               target_label: role
 
@@ -193,10 +151,10 @@ data:
             - source_labels: [__meta_kubernetes_namespace]
               action: keep
               regex: {{ .Values.global.namespace | default "observability" }}
-            - source_labels: [__meta_kubernetes_service_label_app]
+            - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
               action: keep
               regex: aurora-exporter
-            - source_labels: [__meta_kubernetes_service_label_component]
+            - source_labels: [__meta_kubernetes_service_label_target_engine]
               action: keep
               regex: postgresql
             - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
@@ -213,7 +171,7 @@ data:
             - source_labels: [__meta_kubernetes_service_annotation_aurora_aws_instance_identifier]
               action: replace
               target_label: instance_id
-            - source_labels: [__meta_kubernetes_service_label_role]
+            - source_labels: [__meta_kubernetes_service_label_target_role]
               action: replace
               target_label: role
 
