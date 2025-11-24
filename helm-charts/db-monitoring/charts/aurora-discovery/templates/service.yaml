@@ -1,0 +1,23 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aurora-discovery.fullname" . }}
+  namespace: {{ include "aurora-discovery.namespace" . }}
+  labels:
+    {{- include "aurora-discovery.labels" . | nindent 4 }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.metrics.port | quote }}
+    prometheus.io/path: {{ .Values.metrics.path | quote }}
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for CronJob pods
+  selector:
+    {{- include "aurora-discovery.selectorLabels" . | nindent 4 }}
+  ports:
+  - name: metrics
+    port: {{ .Values.metrics.port }}
+    targetPort: metrics
+    protocol: TCP
+{{- end }}

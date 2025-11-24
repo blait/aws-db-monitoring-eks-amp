@@ -30,27 +30,11 @@ Parameters:
     Default: bastion-host-keypair
     Description: Name for the EC2 Key Pair to be created for bastion host access
 
-  MySQLMasterUsername:
-    Type: String
-    Default: admin
-    Description: Master username for Aurora MySQL cluster
+  # Removed MySQLMasterUsername and MySQLMasterPassword parameters
+  # Aurora MySQL will use Secrets Manager for credential management
 
-  MySQLMasterPassword:
-    Type: String
-    Default: adminadmin
-    NoEcho: true
-    Description: Master password for Aurora MySQL cluster
-
-  PostgreSQLMasterUsername:
-    Type: String
-    Default: root
-    Description: Master username for Aurora PostgreSQL cluster
-
-  PostgreSQLMasterPassword:
-    Type: String
-    Default: rootroot
-    NoEcho: true
-    Description: Master password for Aurora PostgreSQL cluster
+  # Removed PostgreSQLMasterUsername and PostgreSQLMasterPassword parameters
+  # Aurora PostgreSQL will use Secrets Manager for credential management
 
   SQLServerMasterUsername:
     Type: String
@@ -149,12 +133,14 @@ Resources:
     Type: AWS::RDS::DBCluster
     Properties:
       Engine: aurora-mysql
-      EngineVersion: 8.0.mysql_aurora.3.04.1
+      EngineVersion: 8.0.mysql_aurora.3.08.2
       DatabaseName: aurora_mysql_db
-      MasterUsername: !Ref MySQLMasterUsername
-      MasterUserPassword: !Ref MySQLMasterPassword
+      MasterUsername: admin
+      ManageMasterUserPassword: true
+      MasterUserSecret:
+        KmsKeyId: alias/aws/secretsmanager
       DBSubnetGroupName: !Ref MySQLDBSubnetGroup
-      Port: 3306  # Explicitly set MySQL to use standard port 3306
+      Port: 3306 # Explicitly set MySQL to use standard port 3306
       BackupRetentionPeriod: 7
       DeletionProtection: false
       VpcSecurityGroupIds:
@@ -229,12 +215,14 @@ Resources:
     Type: AWS::RDS::DBCluster
     Properties:
       Engine: aurora-postgresql
-      EngineVersion: 15.3
+      EngineVersion: 17.4
       DatabaseName: aurora_postgresql_db
-      MasterUsername: !Ref PostgreSQLMasterUsername
-      MasterUserPassword: !Ref PostgreSQLMasterPassword
+      MasterUsername: postgres
+      ManageMasterUserPassword: true
+      MasterUserSecret:
+        KmsKeyId: alias/aws/secretsmanager
       DBSubnetGroupName: !Ref PostgreSQLDBSubnetGroup
-      Port: 5432  # Explicitly set PostgreSQL to use standard port 5432
+      Port: 5432 # Explicitly set PostgreSQL to use standard port 5432
       BackupRetentionPeriod: 7
       DeletionProtection: false
       VpcSecurityGroupIds:
@@ -308,10 +296,10 @@ Resources:
   SQLServerInstance:
     Type: AWS::RDS::DBInstance
     Properties:
-      Engine: sqlserver-se  # Changed to Standard Edition for Read Replica support
+      Engine: sqlserver-se # Changed to Standard Edition for Read Replica support
       EngineVersion: 15.00.4236.7.v1
-      DBInstanceClass: db.m5.large  # Standard Edition requires larger instance class
-      LicenseModel: license-included  # Required for SQL Server Standard Edition
+      DBInstanceClass: db.m5.large # Standard Edition requires larger instance class
+      LicenseModel: license-included # Required for SQL Server Standard Edition
       AllocatedStorage: 20
       StorageType: gp2
       MasterUsername: !Ref SQLServerMasterUsername
@@ -358,7 +346,7 @@ Resources:
           source ~/.bash_profile
 
           # Install performance testing tools
-          sudo dnf install -y git python3 python3-pip htop iotop
+          sudo dnf install -y git python3 python3-pip htop iotop jq awscli
 
           # Install MySQL sysbench
           echo "=== Installing dependencies for sysbench build ==="
@@ -398,9 +386,13 @@ Resources:
 
           # MySQL Performance Test Script
           MYSQL_HOST=${MySQLCluster.Endpoint.Address}
-          MYSQL_USER=${MySQLMasterUsername}
-          MYSQL_PASS=${MySQLMasterPassword}
+          MYSQL_SECRET_ARN=${MySQLCluster.MasterUserSecret.SecretArn}
           MYSQL_DB=aurora_mysql_db
+
+          # Get credentials from Secrets Manager
+          MYSQL_CREDS=$(aws secretsmanager get-secret-value --secret-id $MYSQL_SECRET_ARN --query SecretString --output text)
+          MYSQL_USER=$(echo $MYSQL_CREDS | jq -r .username)
+          MYSQL_PASS=$(echo $MYSQL_CREDS | jq -r .password)
 
           echo "Starting MySQL Performance Test..."
           echo "MySQL Host: $MYSQL_HOST"
@@ -509,9 +501,13 @@ Resources:
 
           # PostgreSQL Performance Test Script
           PG_HOST=${PostgreSQLCluster.Endpoint.Address}
-          PG_USER=${PostgreSQLMasterUsername}
-          PG_PASS=${PostgreSQLMasterPassword}
+          PG_SECRET_ARN=${PostgreSQLCluster.MasterUserSecret.SecretArn}
           PG_DB=aurora_postgresql_db
+
+          # Get credentials from Secrets Manager
+          PG_CREDS=$(aws secretsmanager get-secret-value --secret-id $PG_SECRET_ARN --query SecretString --output text)
+          PG_USER=$(echo $PG_CREDS | jq -r .username)
+          PG_PASS=$(echo $PG_CREDS | jq -r .password)
 
           export PGPASSWORD=$PG_PASS
 
@@ -628,6 +624,16 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*"
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-bastion-role
@@ -644,6 +650,12 @@ Outputs:
     Value: !GetAtt MySQLCluster.Endpoint.Address
     Export:
       Name: !Sub ${AWS::StackName}-MySQLClusterEndpoint
+
+  MySQLClusterSecretArn:
+    Description: The ARN of the Secrets Manager secret for Aurora MySQL cluster
+    Value: !GetAtt MySQLCluster.MasterUserSecret.SecretArn
+    Export:
+      Name: !Sub ${AWS::StackName}-MySQLClusterSecretArn
 
   MySQLClusterPort:
     Description: The port for the Aurora MySQL cluster
@@ -668,6 +680,12 @@ Outputs:
     Value: !GetAtt PostgreSQLCluster.Endpoint.Address
     Export:
       Name: !Sub ${AWS::StackName}-PostgreSQLClusterEndpoint
+
+  PostgreSQLClusterSecretArn:
+    Description: The ARN of the Secrets Manager secret for Aurora PostgreSQL cluster
+    Value: !GetAtt PostgreSQLCluster.MasterUserSecret.SecretArn
+    Export:
+      Name: !Sub ${AWS::StackName}-PostgreSQLClusterSecretArn
 
   PostgreSQLClusterPort:
     Description: The port for the Aurora PostgreSQL cluster

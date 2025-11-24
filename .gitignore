@@ -5,3 +5,8 @@ helm-charts/*/charts/*.tgz
 helm-charts/*/charts/redis-exporter/
 *-resolved.yaml
 adot-trust-policy.json 
+
+# Kiro
+.kiro/*
+
+memo.txt

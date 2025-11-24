@@ -1,0 +1,109 @@
+# Aurora Discovery configuration
+enabled: true
+
+# CronJob schedule configuration
+schedule: "0 * * * *" # Every hour
+
+# Container image configuration
+image:
+  # Repository should be set to your ECR repository URI
+  # Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/aurora-eks-amp-monitoring-aurora-discovery
+  repository: ""
+  tag: "latest"
+  pullPolicy: Always # Always pull latest image from ECR
+
+# Resource configuration
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# AWS configuration
+aws:
+  region: "" # Will be set from global.region or AWS_REGION
+
+# State management configuration
+state:
+  configMapName: aurora-discovery-state
+
+# ServiceAccount configuration
+serviceAccount:
+  create: true
+  name: aurora-discovery
+  annotations:
+    eks.amazonaws.com/role-arn: "" # IRSA role ARN for AWS access
+
+# RBAC configuration
+rbac:
+  create: true
+
+# Logging configuration
+logging:
+  level: INFO
+
+# CronJob configuration
+cronJob:
+  concurrencyPolicy: Forbid # Prevent overlapping executions
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  restartPolicy: OnFailure
+  backoffLimit: 2
+
+# Metrics configuration
+metrics:
+  enabled: true
+  port: 8080
+  path: /metrics
+
+# Alerting configuration (requires Prometheus Operator)
+# Set to false if using ADOT Collector with Kubernetes Service Discovery
+alerting:
+  enabled: false
+  evaluationInterval: 30s
+  runbookUrl: "https://your-runbook-url.com"
+
+  # CronJob failure alerts
+  cronJobFailureThreshold: 7200 # 2 hours in seconds
+  cronJobFailureFor: 5m
+  cronJobFailureSeverity: warning
+
+  # Error rate alerts
+  highErrorRateThreshold: 0.1 # errors per second
+  highErrorRateFor: 5m
+  highErrorRateSeverity: warning
+
+  # AWS API alerts
+  awsThrottlingThreshold: 0.05 # throttled requests per second
+  awsThrottlingFor: 2m
+  awsThrottlingSeverity: warning
+
+  awsHighLatencyThreshold: 10 # seconds
+  awsHighLatencyFor: 5m
+  awsHighLatencySeverity: info
+
+  # Kubernetes API alerts
+  k8sErrorThreshold: 0.05 # errors per second
+  k8sErrorFor: 3m
+  k8sErrorSeverity: warning
+
+  # Resource management alerts
+  exporterCreationFailureThreshold: 3 # failures in 10 minutes
+  exporterCreationFailureFor: 0m
+  exporterCreationFailureSeverity: critical
+
+  # State management alerts
+  stateConfigMapSizeThreshold: 1048576 # 1MB in bytes
+  stateConfigMapSizeFor: 5m
+  stateConfigMapSizeSeverity: warning
+
+  # Performance alerts
+  slowExecutionThreshold: 1800 # 30 minutes in seconds
+  slowExecutionFor: 0m
+  slowExecutionSeverity: warning
+
+  # Coverage alerts
+  noManagedClustersFor: 10m
+  noManagedClustersSeverity: info

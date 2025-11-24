@@ -23,13 +23,12 @@ maintainers:
 dependencies:
   - name: adot-collector
     version: "1.0.0"
-    condition: adot.enabled
-  - name: mysql-exporter
+    repository: "file://./charts/adot-collector"
+    condition: adot-collector.enabled
+  - name: aurora-discovery
     version: "1.0.0"
-    condition: mysql.enabled
-  - name: postgresql-exporter
-    version: "1.0.0"
-    condition: postgresql.enabled
+    repository: "file://./charts/aurora-discovery"
+    condition: aurora-discovery.enabled
   - name: redis-exporter
     version: "1.0.0"
     repository: "file://./charts/redis-exporter"
@@ -37,3 +36,4 @@ dependencies:
   - name: sql-exporter
     version: "0.1.0"
     condition: sql-exporter.enabled
+    repository: "file://./charts/sql-exporter"

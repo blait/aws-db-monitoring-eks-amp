@@ -1,7 +1,7 @@
 # Production environment values
 global:
   namespace: observability
-  region: ${AWS_REGION}
+  region: ""
   clusterName: ""
   rbac:
     create: true
@@ -10,7 +10,40 @@ global:
 amp:
   workspaceId: ""
   endpoint: ""
-  region: ${AWS_REGION}
+  region: ""
+
+# Aurora Discovery configuration - automatic Aurora cluster discovery and monitoring
+aurora-discovery:
+  enabled: true # Enabled by default - primary Aurora monitoring system
+  schedule: "0 * * * *" # Every hour
+  image:
+    repository: ""
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  aws:
+    region: ""
+  serviceAccount:
+    create: true
+    name: aurora-discovery
+    annotations:
+      eks.amazonaws.com/role-arn: "" # Must be set to IAM role ARN with required permissions
+  state:
+    configMapName: aurora-discovery-state
+  logging:
+    level: INFO
+  cronJob:
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 1
+    restartPolicy: OnFailure
+    backoffLimit: 2
 
 # ADOT Collector configuration - values passed to subchart
 adot-collector:
@@ -19,7 +52,7 @@ adot-collector:
     create: true
     name: adot-collector
     annotations:
-      eks.amazonaws.com/role-arn: ""
+      eks.amazonaws.com/role-arn: "" # Must be set to IAM role ARN with AMP write permissions
   resources:
     requests:
       cpu: 500m
@@ -31,67 +64,12 @@ adot-collector:
     scrapeInterval: 15s
     scrapeTimeout: 10s
   amp:
-    endpoint: ""
-    region: ${AWS_REGION}
+    endpoint: "" # Must be set to AMP workspace endpoint (e.g., https://aps-workspaces.ap-northeast-2.amazonaws.com/workspaces/ws-xxx/api/v1/remote_write)
+    region: ""
+  auroraDiscovery:
+    enabled: true # Enable Aurora Discovery integration (disable legacy static configs)
 
-# MySQL Exporter configuration - monitor primary instance (represents cluster)
-mysql-exporter:
-  enabled: true
-  instances:
-    - name: mysql-cluster
-      endpoint: ""  # Will be set to primary MySQL endpoint (instance-1)
-      port: 3306
-      username: admin
-      password: adminadmin
-      enabled: true
-  resources:
-    requests:
-      cpu: 200m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
-# PostgreSQL Exporter configuration - monitor cluster writer for enterprise metrics
-postgresql-exporter:
-  enabled: true
-  instances:
-    - name: postgresql-cluster
-      endpoint: ""  # Will be set to PostgreSQL cluster writer endpoint
-      port: 5432
-      username: root
-      password: rootroot
-      database: postgres
-      sslmode: disable
-      enabled: true
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
-
-# SQL Server Exporter configuration
-sql-exporter:
-  enabled: true
-  endpoint: ""  # Will be set to SQL Server endpoint
-  port: 1433
-  username: admin
-  password: AdminAdmin123!
-  image:
-    repository: burningalchemist/sql_exporter
-    tag: 0.18.2
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      cpu: 200m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
-# redis-exporter configuration
+# redis-exporter configuration - for ElastiCache/Redis monitoring (separate from Aurora)
 redis-exporter:
   enabled: true
   instances:
@@ -101,7 +79,7 @@ redis-exporter:
       enabled: true
   image:
     repository: oliver006/redis_exporter
-    tag: v1.65.0 # 사용하고자 하는 버전 (redis-exporter/Chart.yaml의 appVersion과 일치)
+    tag: v1.65.0
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -116,3 +94,24 @@ redis-exporter:
     annotations:
       prometheus.io/scrape: "true"
       prometheus.io/port: "9121"
+
+# SQL Server Exporter configuration - for SQL Server monitoring (separate from Aurora)
+sql-exporter:
+  enabled: true
+  endpoint: "" # Will be set to SQL Server endpoint
+  port: 1433
+  username: admin
+  password: AdminAdmin123!
+  image:
+    repository: burningalchemist/sql_exporter
+    tag: 0.18.2
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+# Legacy MySQL and PostgreSQL static exporters removed
+# Aurora Discovery now handles Aurora MySQL and PostgreSQL cluster monitoring dynamically
