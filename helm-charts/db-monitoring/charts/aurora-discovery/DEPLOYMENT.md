@@ -4,6 +4,95 @@
 
 Aurora Discovery is an automated system that discovers Amazon Aurora clusters in your AWS account and dynamically creates Prometheus exporters for monitoring. This guide covers the deployment, configuration, and troubleshooting of the Aurora Discovery feature.
 
+### High-Level Architecture
+
+```mermaid
+flowchart TB
+    subgraph "Kubernetes Cluster"
+        CronJob["CronJob<br/>(Scheduled Execution)"]
+        Job["Job Pod<br/>(Aurora Discovery)"]
+        
+        subgraph "Reconciliation Loop"
+            Discovery["1. AWS Discovery<br/>Scan Aurora Clusters"]
+            StateLoad["2. State Load<br/>Read K8s Resources"]
+            Reconcile["3. Reconciliation<br/>Compare & Determine Actions"]
+            Execute["4. Execute Actions<br/>Create/Update/Delete"]
+        end
+        
+        subgraph "Managed Resources"
+            Deployment["Deployment<br/>(Exporter Pod)"]
+            Service["Service<br/>(Metrics Endpoint)"]
+            Secret["Secret<br/>(DB Credentials)"]
+        end
+        
+        ADOT["ADOT Collector<br/>(Service Discovery)"]
+    end
+    
+    subgraph "AWS"
+        RDS["Amazon Aurora<br/>Clusters & Instances"]
+        SM["Secrets Manager<br/>(DB Credentials)"]
+        IAM["IAM Role<br/>(IRSA)"]
+    end
+    
+    subgraph "Observability"
+        AMP["Amazon Managed<br/>Prometheus"]
+        Grafana["Grafana<br/>(Dashboards)"]
+    end
+    
+    CronJob -->|Triggers| Job
+    Job -->|Executes| Discovery
+    Discovery -->|Queries| RDS
+    Discovery -->|Retrieves| SM
+    Job -->|Uses| IAM
+    
+    Discovery --> StateLoad
+    StateLoad -->|Reads Annotations| Service
+    StateLoad --> Reconcile
+    
+    Reconcile -->|Determines| Execute
+    Execute -->|Creates/Updates| Deployment
+    Execute -->|Creates/Updates| Service
+    Execute -->|Creates/Updates| Secret
+    
+    Service -.->|Annotated with<br/>Cluster/Instance Info| StateLoad
+    
+    Deployment -->|Scrapes| RDS
+    ADOT -->|Discovers & Scrapes| Service
+    ADOT -->|Sends Metrics| AMP
+    AMP -->|Queries| Grafana
+    
+    style Discovery fill:#e1f5ff
+    style StateLoad fill:#e1f5ff
+    style Reconcile fill:#fff4e1
+    style Execute fill:#ffe1e1
+    style Service fill:#e8f5e9
+    style CronJob fill:#f3e5f5
+```
+
+### Key Components
+
+1. **CronJob**: Schedules periodic execution of the Aurora Discovery process (default: every hour)
+
+2. **Reconciliation Loop**: Core logic that synchronizes AWS state with Kubernetes resources
+   - **AWS Discovery**: Scans Aurora clusters and instances using AWS RDS API
+   - **State Load**: Reads current state from Kubernetes resource annotations (no ConfigMap)
+   - **Reconciliation**: Compares AWS and K8s states to determine required actions
+   - **Execute Actions**: Creates, updates, or deletes exporter resources
+
+3. **Managed Resources**: Dynamically created for each Aurora instance
+   - **Deployment**: Runs the appropriate exporter (mysqld_exporter or postgres_exporter)
+   - **Service**: Exposes metrics endpoint with Prometheus annotations
+   - **Secret**: Stores database credentials retrieved from AWS Secrets Manager
+
+4. **State Management**: Uses Kubernetes resource annotations as Single Source of Truth
+   - `aurora.aws/cluster-identifier`: Cluster ID
+   - `aurora.aws/instance-identifier`: Instance ID
+   - `aurora.aws/discovered-at`: First discovery timestamp
+   - `aurora.aws/last-seen`: Last reconciliation timestamp
+   - `aurora.aws/endpoint`, `aurora.aws/status`, etc.: Instance metadata
+
+5. **Service Discovery**: ADOT Collector automatically discovers and scrapes exporter services using Kubernetes service discovery
+
 ## Prerequisites
 
 ### AWS Requirements
@@ -27,11 +116,11 @@ Aurora Discovery is an automated system that discovers Amazon Aurora clusters in
 2. **AWS CLI**: AWS CLI v2 configured with appropriate credentials
 3. **Git**: Git for cloning the repository
 
-## Container Image Setup
+## Step 1. Container Image Setup
 
 Before deploying Aurora Discovery, you need to build and push the container image to Amazon ECR.
 
-### Step 1: Create ECR Repository
+### Step 1.1: Create ECR Repository
 
 First, create an ECR repository using CloudFormation:
 
@@ -58,7 +147,7 @@ export ECR_REPOSITORY_URI=$(aws cloudformation describe-stacks \
 echo "ECR Repository URI: ${ECR_REPOSITORY_URI}"
 ```
 
-### Step 2: Build Container Image
+### Step 1.2: Build Container Image
 
 Navigate to the Aurora Discovery application directory and build the Docker image:
 
@@ -77,7 +166,7 @@ docker tag aurora-discovery:latest ${ECR_REPOSITORY_URI}:1.0.0
 docker images | grep aurora-discovery
 ```
 
-### Step 3: Push Image to ECR
+### Step 1.3: Push Image to ECR
 
 Authenticate Docker to your ECR registry and push the image:
 
@@ -98,7 +187,7 @@ echo "Container image pushed successfully!"
 echo "Image URI: ${ECR_REPOSITORY_URI}:1.0.0"
 ```
 
-### Step 4: Verify Image in ECR
+### Step 1.4: Verify Image in ECR
 
 Verify that the image was pushed successfully:
 
@@ -117,7 +206,7 @@ aws ecr describe-image-scan-findings \
   --output json 2>/dev/null || echo "Image scan not yet complete. Check again in a few minutes."
 ```
 
-### Alternative: Using the Build Script
+<!-- ### Alternative: Using the Build Script
 
 You can also use the provided build script for a streamlined process:
 
@@ -138,11 +227,11 @@ cd helm-charts/db-monitoring/charts/aurora-discovery/app
   --image-name ${WORKSHOP_NAME}-aurora-discovery \
   --tag latest \
   --push
-```
+``` -->
 
-## IAM Setup
+## Step 2. IAM Setup
 
-### Step 1: Set Environment Variables
+### Step 2.1: Set Environment Variables
 
 First, set up the required environment variables:
 
@@ -167,7 +256,7 @@ echo "Cluster: ${CLUSTER_NAME}"
 echo "OIDC Provider: ${OIDC_PROVIDER}"
 ```
 
-### Step 2: Create IAM Policy for Aurora Discovery
+### Step 2.2: Create IAM Policy for Aurora Discovery
 
 Create an IAM policy with permissions to discover Aurora clusters and access Secrets Manager:
 
@@ -212,7 +301,7 @@ export AURORA_DISCOVERY_POLICY_ARN=$(aws iam list-policies \
 echo "Aurora Discovery Policy ARN: ${AURORA_DISCOVERY_POLICY_ARN}"
 ```
 
-### Step 3: Create IAM Role for Service Account (IRSA)
+### Step 2.3: Create IAM Role for Service Account (IRSA)
 
 Create an IAM role that can be assumed by the Aurora Discovery Kubernetes service account:
 
@@ -258,7 +347,7 @@ export AURORA_DISCOVERY_ROLE_ARN=$(aws iam get-role \
 echo "Aurora Discovery Role ARN: ${AURORA_DISCOVERY_ROLE_ARN}"
 ```
 
-### Step 4: Verify IAM Setup
+### Step 2.4: Verify IAM Setup
 
 Verify that the IAM role and policy are correctly configured:
 
@@ -274,9 +363,9 @@ echo "Use this Role ARN in your Helm values:"
 echo "${AURORA_DISCOVERY_ROLE_ARN}"
 ```
 
-## Deployment Steps
+## Step 3. Deployment Steps
 
-### Step 1: Verify Aurora Clusters with Secrets Manager
+### Step 3.1: Verify Aurora Clusters with Secrets Manager
 
 If you deployed Aurora clusters using the provided CloudFormation template with `ManageMasterUserPassword: true`, the Secrets Manager secrets are automatically created and associated with the clusters. You can verify this:
 
@@ -306,9 +395,9 @@ aws secretsmanager get-secret-value \
   --output text | jq .
 ```
 
-**Note**: If you created Aurora clusters manually without Secrets Manager integration, you'll need to create secrets manually. See the "Manual Secret Creation" section below.
+**Note**: If you created Aurora clusters manually without Secrets Manager integration, you'll need to create secrets manually. See the "Manual Secret Creation (Optional)" section below.
 
-### Step 2: Deploy with Helm
+### Step 3.2: Deploy with Helm
 
 Deploy or upgrade the db-monitoring chart with Aurora Discovery enabled using `--set` flags:
 
@@ -321,7 +410,10 @@ export ECR_REPOSITORY_URI=$(aws cloudformation describe-stacks \
   --output text)
 
 # Navigate to the Helm chart directory
-cd helm-charts/db-monitoring
+cd ../../..
+
+# Create namespace
+kubectl create namespace observability
 
 # Update Helm dependencies
 helm dependency update
@@ -353,10 +445,10 @@ echo "Aurora Discovery deployed successfully!"
 - If the namespace doesn't exist, create it first: `kubectl create namespace observability`
 - The command uses the base `values.yaml` file and overrides only environment-specific values via `--set` flags
 - The `aurora-discovery.image.repository` is set to the ECR repository URI from the Container Image Setup section
-- ServiceMonitor and PrometheusRule are disabled by default as ADOT Collector uses Kubernetes Service Discovery
-- If you're using Prometheus Operator instead of ADOT Collector, enable them with `--set aurora-discovery.alerting.enabled=true`
+<!-- - ServiceMonitor and PrometheusRule are disabled by default as ADOT Collector uses Kubernetes Service Discovery
+- If you're using Prometheus Operator instead of ADOT Collector, enable them with `--set aurora-discovery.alerting.enabled=true` -->
 
-### Step 3: Verify Deployment
+### Step 3.3: Verify Deployment
 
 Verify that Aurora Discovery is running correctly:
 
@@ -383,7 +475,7 @@ kubectl get jobs -n observability -w
 kubectl logs -n observability job/aurora-discovery-manual-test --follow
 ```
 
-### Step 4: Verify Dynamic Exporters
+### Step 4.4: Verify Dynamic Exporters
 
 After the CronJob runs, verify that dynamic exporters are created:
 
@@ -396,9 +488,6 @@ kubectl get services -n observability -l app.kubernetes.io/name=aurora-exporter
 
 # Check exporter logs
 kubectl logs -n observability -l app.kubernetes.io/name=aurora-exporter --tail=50
-
-# Verify ADOT Collector is discovering the exporters
-kubectl logs -n observability deployment/db-monitoring-adot-collector | grep aurora
 ```
 
 ## Manual Secret Creation (Optional)
@@ -520,7 +609,7 @@ kubectl get jobs -n observability -l app.kubernetes.io/name=aurora-discovery
 kubectl logs -n observability job/aurora-discovery-<timestamp>
 ``` -->
 
-## Configuration Options
+## Configuration Options (Optional)
 
 ### Complete Configuration Reference
 
@@ -743,7 +832,7 @@ kubectl delete deployment,service,secret -n observability -l aurora.aws/cluster-
 2. **Kubernetes API Limits**: Consider cluster size when setting resource limits
 3. **State ConfigMap Size**: Monitor ConfigMap size with large numbers of clusters -->
 
-## Updating the Container Image
+## Updating the Container Image (Optional)
 
 When you make changes to the Aurora Discovery application code, follow these steps to update the deployed version:
 
@@ -814,7 +903,7 @@ kubectl create job aurora-discovery-test-${NEW_VERSION} \
 kubectl logs -n observability job/aurora-discovery-test-${NEW_VERSION} --follow
 ```
 
-## Cleanup
+## Cleanup (Optional)
 
 To remove the Aurora Discovery deployment and ECR repository:
 
@@ -852,14 +941,3 @@ aws cloudformation wait stack-delete-complete \
 
 echo "ECR repository deleted successfully!"
 ```
-
-## Next Steps
-
-After successful deployment:
-
-1. Monitor the system for 24-48 hours
-2. Verify all Aurora clusters are being discovered
-3. Check that metrics are flowing correctly
-4. Update monitoring dashboards if needed
-5. Train team members on the new system
-6. Update incident response procedures

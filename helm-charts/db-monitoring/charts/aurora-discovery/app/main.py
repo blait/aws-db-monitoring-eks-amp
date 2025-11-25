@@ -117,12 +117,6 @@ def parse_arguments() -> argparse.Namespace:
     )
     
     parser.add_argument(
-        "--state-configmap-name",
-        default=os.getenv("STATE_CONFIGMAP_NAME", "aurora-discovery-state"),
-        help="Name of the ConfigMap for state storage (default: %(default)s)"
-    )
-    
-    parser.add_argument(
         "--log-level",
         default=os.getenv("LOG_LEVEL", "INFO"),
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -186,15 +180,13 @@ def main() -> int:
         logger.info("Starting Aurora Discovery Service", extra={
             "aws_region": args.aws_region,
             "namespace": args.namespace,
-            "state_configmap_name": args.state_configmap_name,
             "metrics_port": args.metrics_port
         })
         
         # Initialize the discovery service
         service = AuroraDiscoveryService(
             aws_region=args.aws_region,
-            namespace=args.namespace,
-            state_configmap_name=args.state_configmap_name
+            namespace=args.namespace
         )
         
         # Execute the discovery and management cycle

@@ -291,7 +291,8 @@ class ResourceManager:
             True if all resources were deleted successfully, False otherwise
         """
         success = True
-        label_selector = f"aurora.aws/cluster-identifier={cluster_id},aurora.aws/instance-identifier={instance_id}"
+        # Use label selector to find aurora-exporter resources, then filter by annotation
+        label_selector = "app.kubernetes.io/name=aurora-exporter"
         
         logger.info(f"Deleting exporter resources for instance {instance_id} in cluster {cluster_id}")
         
@@ -302,6 +303,11 @@ class ResourceManager:
                 label_selector=label_selector
             )
             for deployment in deployments.items:
+                # Filter by annotation
+                annotations = deployment.metadata.annotations or {}
+                if (annotations.get("aurora.aws/cluster-identifier") != cluster_id or
+                    annotations.get("aurora.aws/instance-identifier") != instance_id):
+                    continue
                 try:
                     self._retry_with_backoff(
                         lambda: self.apps_v1.delete_namespaced_deployment(
@@ -327,6 +333,11 @@ class ResourceManager:
                 label_selector=label_selector
             )
             for service in services.items:
+                # Filter by annotation
+                annotations = service.metadata.annotations or {}
+                if (annotations.get("aurora.aws/cluster-identifier") != cluster_id or
+                    annotations.get("aurora.aws/instance-identifier") != instance_id):
+                    continue
                 try:
                     self._retry_with_backoff(
                         lambda: self.core_v1.delete_namespaced_service(
@@ -349,6 +360,11 @@ class ResourceManager:
                 label_selector=label_selector
             )
             for secret in secrets.items:
+                # Filter by annotation
+                annotations = secret.metadata.annotations or {}
+                if (annotations.get("aurora.aws/cluster-identifier") != cluster_id or
+                    annotations.get("aurora.aws/instance-identifier") != instance_id):
+                    continue
                 try:
                     self._retry_with_backoff(
                         lambda: self.core_v1.delete_namespaced_secret(
@@ -384,7 +400,8 @@ class ResourceManager:
             True if all resources were deleted successfully, False otherwise
         """
         success = True
-        label_selector = f"aurora.aws/cluster-identifier={cluster_id}"
+        # Use label selector to find aurora-exporter resources, then filter by annotation
+        label_selector = "app.kubernetes.io/name=aurora-exporter"
         
         logger.info(f"Deleting all exporter resources for cluster {cluster_id}")
         
@@ -395,6 +412,10 @@ class ResourceManager:
                 label_selector=label_selector
             )
             for deployment in deployments.items:
+                # Filter by annotation
+                annotations = deployment.metadata.annotations or {}
+                if annotations.get("aurora.aws/cluster-identifier") != cluster_id:
+                    continue
                 try:
                     self._retry_with_backoff(
                         lambda: self.apps_v1.delete_namespaced_deployment(
@@ -420,6 +441,10 @@ class ResourceManager:
                 label_selector=label_selector
             )
             for service in services.items:
+                # Filter by annotation
+                annotations = service.metadata.annotations or {}
+                if annotations.get("aurora.aws/cluster-identifier") != cluster_id:
+                    continue
                 try:
                     self._retry_with_backoff(
                         lambda: self.core_v1.delete_namespaced_service(
@@ -442,6 +467,10 @@ class ResourceManager:
                 label_selector=label_selector
             )
             for secret in secrets.items:
+                # Filter by annotation
+                annotations = secret.metadata.annotations or {}
+                if annotations.get("aurora.aws/cluster-identifier") != cluster_id:
+                    continue
                 try:
                     self._retry_with_backoff(
                         lambda: self.core_v1.delete_namespaced_secret(
@@ -482,13 +511,25 @@ class ResourceManager:
             "target-role": instance.role
         }
         
-        # Annotations for full identifiers
+        # Annotations for full identifiers and state tracking
         annotations = {
             "aurora.aws/cluster-identifier": cluster.identifier,
             "aurora.aws/instance-identifier": instance.identifier,
             "aurora.aws/availability-zone": instance.availability_zone,
-            "aurora.aws/engine": cluster.engine
+            "aurora.aws/engine": cluster.engine,
+            "aurora.aws/endpoint": instance.endpoint,
+            "aurora.aws/port": str(instance.port),
+            "aurora.aws/role": instance.role,
+            "aurora.aws/status": instance.status
         }
+        
+        # Add discovered_at if available (only set on first creation)
+        if instance.discovered_at:
+            annotations["aurora.aws/discovered-at"] = instance.discovered_at.isoformat()
+        
+        # Add last_seen (updated on every reconciliation)
+        if instance.last_seen:
+            annotations["aurora.aws/last-seen"] = instance.last_seen.isoformat()
         
         # Use instance endpoint instead of cluster endpoint
         instance_credentials = ClusterCredentials(
@@ -555,13 +596,25 @@ class ResourceManager:
             "app.kubernetes.io/instance": deployment_name
         }
         
-        # Annotations for full identifiers
+        # Annotations for full identifiers and state tracking
         annotations = {
             "aurora.aws/cluster-identifier": cluster.identifier,
             "aurora.aws/instance-identifier": instance.identifier,
             "aurora.aws/availability-zone": instance.availability_zone,
-            "aurora.aws/engine": cluster.engine
+            "aurora.aws/engine": cluster.engine,
+            "aurora.aws/endpoint": instance.endpoint,
+            "aurora.aws/port": str(instance.port),
+            "aurora.aws/role": instance.role,
+            "aurora.aws/status": instance.status
         }
+        
+        # Add discovered_at if available (only set on first creation)
+        if instance.discovered_at:
+            annotations["aurora.aws/discovered-at"] = instance.discovered_at.isoformat()
+        
+        # Add last_seen (updated on every reconciliation)
+        if instance.last_seen:
+            annotations["aurora.aws/last-seen"] = instance.last_seen.isoformat()
         
         return client.V1Deployment(
             api_version="apps/v1",
@@ -632,7 +685,7 @@ class ResourceManager:
             "app.kubernetes.io/instance": deployment_name
         }
         
-        # Annotations for full identifiers and Prometheus
+        # Annotations for full identifiers, Prometheus, and state tracking
         annotations = {
             "prometheus.io/scrape": "true",
             "prometheus.io/port": str(exporter_config["port"]),
@@ -640,8 +693,20 @@ class ResourceManager:
             "aurora.aws/cluster-identifier": cluster.identifier,
             "aurora.aws/instance-identifier": instance.identifier,
             "aurora.aws/availability-zone": instance.availability_zone,
-            "aurora.aws/engine": cluster.engine
+            "aurora.aws/engine": cluster.engine,
+            "aurora.aws/endpoint": instance.endpoint,
+            "aurora.aws/port": str(instance.port),
+            "aurora.aws/role": instance.role,
+            "aurora.aws/status": instance.status
         }
+        
+        # Add discovered_at if available (only set on first creation)
+        if instance.discovered_at:
+            annotations["aurora.aws/discovered-at"] = instance.discovered_at.isoformat()
+        
+        # Add last_seen (updated on every reconciliation)
+        if instance.last_seen:
+            annotations["aurora.aws/last-seen"] = instance.last_seen.isoformat()
         
         return client.V1Service(
             api_version="v1",
@@ -665,3 +730,111 @@ class ResourceManager:
                 type="ClusterIP"
             )
         )
+    
+    def update_last_seen_annotations(self, cluster: AuroraCluster, instance: AuroraInstance) -> bool:
+        """Update last-seen annotation on existing resources for an instance.
+        
+        This method updates the last_seen timestamp on Deployment, Service, and Secret
+        resources without modifying other aspects of the resources.
+        
+        Args:
+            cluster: Aurora cluster configuration
+            instance: Aurora instance configuration
+            
+        Returns:
+            True if all resources were updated successfully, False otherwise
+        """
+        deployment_name, service_name, secret_name = self._get_instance_resource_names(cluster, instance)
+        success = True
+        
+        if not instance.last_seen:
+            logger.warning(f"Instance {instance.identifier} has no last_seen timestamp")
+            return False
+        
+        last_seen_iso = instance.last_seen.isoformat()
+        
+        # Update Deployment annotation
+        try:
+            deployment = self.apps_v1.read_namespaced_deployment(
+                name=deployment_name,
+                namespace=self.namespace
+            )
+            if deployment.metadata.annotations is None:
+                deployment.metadata.annotations = {}
+            deployment.metadata.annotations["aurora.aws/last-seen"] = last_seen_iso
+            
+            self._retry_with_backoff(
+                lambda: self.apps_v1.patch_namespaced_deployment(
+                    name=deployment_name,
+                    namespace=self.namespace,
+                    body=deployment
+                )
+            )
+            logger.debug(f"Updated last_seen annotation on Deployment: {deployment_name}")
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(f"Deployment {deployment_name} not found, skipping annotation update")
+            else:
+                logger.error(f"Failed to update Deployment {deployment_name} annotation: {e.reason}")
+                success = False
+        except Exception as e:
+            logger.error(f"Unexpected error updating Deployment {deployment_name}: {str(e)}")
+            success = False
+        
+        # Update Service annotation
+        try:
+            service = self.core_v1.read_namespaced_service(
+                name=service_name,
+                namespace=self.namespace
+            )
+            if service.metadata.annotations is None:
+                service.metadata.annotations = {}
+            service.metadata.annotations["aurora.aws/last-seen"] = last_seen_iso
+            
+            self._retry_with_backoff(
+                lambda: self.core_v1.patch_namespaced_service(
+                    name=service_name,
+                    namespace=self.namespace,
+                    body=service
+                )
+            )
+            logger.debug(f"Updated last_seen annotation on Service: {service_name}")
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(f"Service {service_name} not found, skipping annotation update")
+            else:
+                logger.error(f"Failed to update Service {service_name} annotation: {e.reason}")
+                success = False
+        except Exception as e:
+            logger.error(f"Unexpected error updating Service {service_name}: {str(e)}")
+            success = False
+        
+        # Update Secret annotation
+        try:
+            secret = self.core_v1.read_namespaced_secret(
+                name=secret_name,
+                namespace=self.namespace
+            )
+            if secret.metadata.annotations is None:
+                secret.metadata.annotations = {}
+            secret.metadata.annotations["aurora.aws/last-seen"] = last_seen_iso
+            
+            self._retry_with_backoff(
+                lambda: self.core_v1.patch_namespaced_secret(
+                    name=secret_name,
+                    namespace=self.namespace,
+                    body=secret
+                )
+            )
+            logger.debug(f"Updated last_seen annotation on Secret: {secret_name}")
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(f"Secret {secret_name} not found, skipping annotation update")
+            else:
+                logger.error(f"Failed to update Secret {secret_name} annotation: {e.reason}")
+                success = False
+        except Exception as e:
+            logger.error(f"Unexpected error updating Secret {secret_name}: {str(e)}")
+            success = False
+        
+        return success

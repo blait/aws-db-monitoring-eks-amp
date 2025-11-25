@@ -30,14 +30,14 @@ helm version
 
 ## Workshop Modules
 
-1. **Module 1**: Environment Setup
-2. **Module 2**: Networking and Database Infrastructure  
-3. **Module 3**: EKS Cluster Setup (EKS 1.30)
-4. **Module 4**: Amazon Managed Prometheus Setup
-5. **Module 5**: Amazon Managed Grafana Setup
-6. **Module 6**: Deploy Monitoring Stack with Helm
-7. **Module 7**: Dashboard Configuration (MySQL + PostgreSQL)
-8. **Module 8**: Monitoring Best Practices
+1. [**Module 1**: Environment Setup](#module-1-environment-setup)
+2. [**Module 2**: Networking and Database Infrastructure](#module-2-networking-and-database-infrastructure)  
+3. [**Module 3**: EKS Cluster Setup (EKS 1.30)](#module-3-eks-cluster-setup-eks-130)
+4. [**Module 4**: Amazon Managed Prometheus Setup](#module-4-amazon-managed-prometheus-setup)
+5. [**Module 5**: Amazon Managed Grafana Setup](#module-5-amazon-managed-grafana-setup)
+6. [**Module 6**: Deploy Monitoring Stack with Helm](#module-6-deploy-monitoring-stack-with-helm)
+7. [**Module 7**: Dashboard Configuration (MySQL + PostgreSQL)](#module-7-dashboard-configuration)
+8. [**Module 8**: Monitoring Best Practices](#module-8-monitoring-best-practices)
 
 ## Module 1: Environment Setup
 
@@ -331,130 +331,59 @@ export AMG_WORKSPACE_ID=<your-workspace-id>
 echo "AMG Workspace ID: $AMG_WORKSPACE_ID"
 ```
 
-<!-- ## Module 5.5: Container Image Setup (Aurora Discovery)
-
-Before deploying the monitoring stack, set up the ECR repository and build the Aurora Discovery container image:
-
-### Step 1: Create ECR Repository
-
-```bash
-# Deploy the ECR stack
-aws cloudformation create-stack \
-  --stack-name ${WORKSHOP_NAME}-ecr \
-  --template-body file://ecr-stack.yaml \
-  --parameters ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME}
-
-# Wait for stack creation to complete
-aws cloudformation wait stack-create-complete \
-  --stack-name ${WORKSHOP_NAME}-ecr
-
-# Get the ECR repository URI
-export ECR_REPOSITORY_URI=$(aws cloudformation describe-stacks \
-  --stack-name ${WORKSHOP_NAME}-ecr \
-  --query 'Stacks[0].Outputs[?OutputKey==`RepositoryUri`].OutputValue' \
-  --output text)
-
-echo "ECR Repository URI: ${ECR_REPOSITORY_URI}"
-```
-
-### Step 2: Build and Push Container Image
-
-```bash
-# Navigate to the Aurora Discovery application directory
-cd helm-charts/db-monitoring/charts/aurora-discovery/app
-
-# Authenticate Docker to ECR
-aws ecr get-login-password --region ${AWS_REGION} | \
-  docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-
-# Build and push using the build script
-./build.sh \
-  --registry ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
-  --image-name ${WORKSHOP_NAME}-aurora-discovery \
-  --tag 1.0.0 \
-  --push
-
-# Also tag and push as latest
-./build.sh \
-  --registry ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com \
-  --image-name ${WORKSHOP_NAME}-aurora-discovery \
-  --tag latest \
-  --push
-
-# Return to repository root
-cd ../../../../..
-
-echo "Container image setup complete!"
-```
-
-### Step 3: Verify Image in ECR
-
-```bash
-# List images in the repository
-aws ecr describe-images \
-  --repository-name ${WORKSHOP_NAME}-aurora-discovery \
-  --query 'imageDetails[*].[imageTags[0],imagePushedAt,imageSizeInBytes]' \
-  --output table
-```
-
 ## Module 6: Deploy Monitoring Stack with Helm
 
-Instead of manually deploying multiple YAML files, we use a single command:
+This module covers deploying the complete monitoring stack using Helm, including Aurora Discovery for automatic exporter management.
 
-```bash
-# Deploy the complete monitoring stack with production configuration
-./scripts/deploy-monitoring.sh
-```
+> **⚠️ IMPORTANT**: Before deploying the Helm chart, you **MUST** complete the setup steps in [Aurora Discovery Deployment Guide](helm-charts/db-monitoring/charts/aurora-discovery/DEPLOYMENT.md) in the order specified below. Skipping or reordering these steps will cause deployment failures.
 
-The deployment script will:
-- ✅ Validate all required environment variables
-- ✅ Check Helm and kubectl connectivity  
-- ✅ Create production-grade configuration
-- ✅ Deploy all components atomically with enhanced resources
-- ✅ Deploy SQL Server exporter for RDS SQL Server monitoring
-- ✅ Verify deployment status
-- ✅ Provide helpful next steps
+### Setup Overview
 
-### Manual Helm Deployment (Alternative) - Still in the works
+Aurora Discovery requires several prerequisites to be completed **before** Helm deployment:
 
-If you prefer manual control:
+1. **ECR Repository Setup** - Create container registry for Aurora Discovery image
+2. **Container Image Build & Push** - Build and push the Aurora Discovery application image
+3. **IAM Configuration** - Set up IAM roles and policies for AWS access
+4. **Helm Deployment** - Deploy the monitoring stack with all components
 
-```bash
-# Install the monitoring stack
-helm install db-monitoring ./helm-charts/db-monitoring \
-  --namespace observability \
-  --set amp.workspaceId="$AMP_WORKSPACE_ID" \
-  --set amp.endpoint="$AMP_ENDPOINT" \
-  --set adot.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$ADOT_ROLE_ARN" \
-  --set adot.amp.endpoint="$AMP_ENDPOINT" \
-  --set adot.amp.workspaceId="$AMP_WORKSPACE_ID" \
-  --set mysql-exporter.instances[0].endpoint="$MYSQL_ENDPOINT1" \
-  --set postgresql-exporter.instances[0].endpoint="$POSTGRESQL_ENDPOINT1" \
-  --set sqlExporter.endpoint="$SQLSERVER_ENDPOINT" \
-  --create-namespace \
-  --wait
+### Complete Setup Instructions
 
-# Verify deployment
-helm list -n observability
-kubectl get pods -n observability
-```
+**Follow the [Aurora Discovery Deployment Guide](helm-charts/db-monitoring/charts/aurora-discovery/DEPLOYMENT.md) for detailed step-by-step instructions.**
 
-### Helm Management Commands
+The deployment guide covers:
+- Container Image Setup (ECR repository creation, image build/push)
+- IAM Setup (policies, roles, IRSA configuration)
+- Deployment Steps (Helm installation with proper configuration)
+- Verification procedures
+- Troubleshooting
 
-```bash
-# Check deployment status
-helm status db-monitoring -n observability
+### Quick Reference: Deployment Checklist
 
-# Upgrade deployment
-helm upgrade db-monitoring ./helm-charts/db-monitoring \
-  --namespace observability
+Use this checklist to ensure you complete all steps in the correct order:
 
-# Rollback if needed
-helm rollback db-monitoring 1 -n observability
+- [ ] [**Step 1**: Container Image Setup](helm-charts/db-monitoring/charts/aurora-discovery/DEPLOYMENT.md#step-1-container-image-setup)
+- [ ] [**Step 2**: IAM Setup](helm-charts/db-monitoring/charts/aurora-discovery/DEPLOYMENT.md#step-2-iam-setup)
+- [ ] [**Step 3**: Deployment Steps](helm-charts/db-monitoring/charts/aurora-discovery/DEPLOYMENT.md#step-3-deployment-steps)
 
-# Uninstall
-helm uninstall db-monitoring -n observability
-``` -->
+### Aurora Discovery Architecture
+
+Aurora Discovery automatically discovers Aurora clusters and creates exporters dynamically:
+
+1. **CronJob** runs periodically (default: every hour)
+2. **Reconciliation Loop** compares AWS state with Kubernetes resources
+3. **Dynamic Exporters** are created/updated/deleted based on Aurora cluster changes
+4. **Annotation-based State** uses Kubernetes resource annotations as single source of truth
+5. **ADOT Collector** discovers and scrapes exporters automatically
+
+For complete architecture details, IAM setup, troubleshooting, and advanced configuration, refer to the [Aurora Discovery Deployment Guide](helm-charts/db-monitoring/charts/aurora-discovery/DEPLOYMENT.md).
+
+### Key Features
+
+- ✅ **Automatic Discovery**: No manual exporter configuration needed
+- ✅ **Self-Healing**: Automatically removes orphaned exporters
+- ✅ **Instance-Level Monitoring**: Separate exporters for each Aurora instance
+- ✅ **Credential Management**: Secure credential retrieval from Secrets Manager
+- ✅ **Multi-Engine Support**: Works with both Aurora MySQL and PostgreSQL
 
 ## Module 7: Dashboard Configuration
 
