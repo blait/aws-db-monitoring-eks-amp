@@ -1,182 +1,215 @@
 """
-State management for Aurora Discovery Service using Kubernetes ConfigMaps.
+State management for Aurora Discovery Service using Kubernetes resource annotations.
 """
 
 import logging
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional, Dict, Set
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 
-from models import ClusterState, AuroraCluster
+from models import ClusterState, AuroraCluster, AuroraInstance
 
 
 logger = logging.getLogger(__name__)
 
 
 class StateManager:
-    """Manages Aurora cluster state using Kubernetes ConfigMaps."""
+    """Manages Aurora cluster state by reading Kubernetes resource annotations."""
     
-    def __init__(self, namespace: str, configmap_name: str):
+    def __init__(self, namespace: str):
         """
         Initialize StateManager.
         
         Args:
-            namespace: Kubernetes namespace for the ConfigMap
-            configmap_name: Name of the ConfigMap to use for state storage
+            namespace: Kubernetes namespace to query for resources
         
         Note:
             Kubernetes configuration must be loaded before instantiating this class.
             This is typically done in main.py.
         """
         self.k8s_client = client.CoreV1Api()
+        self.apps_client = client.AppsV1Api()
         self.namespace = namespace
-        self.configmap_name = configmap_name
-        self._resource_version: Optional[str] = None
     
     def load_state(self) -> Optional[ClusterState]:
         """
-        Load cluster state from ConfigMap.
+        Load cluster state from Kubernetes resource annotations.
+        
+        Queries all Services with the aurora.aws/cluster-identifier annotation
+        and reconstructs the cluster state from their annotations.
         
         Returns:
-            ClusterState if found and valid, None if not found or corrupted
+            ClusterState if resources found, None if no resources exist
         """
         try:
-            configmap = self.k8s_client.read_namespaced_config_map(
-                name=self.configmap_name,
-                namespace=self.namespace
+            # Query all services with aurora-exporter label selector
+            services = self.k8s_client.list_namespaced_service(
+                namespace=self.namespace,
+                label_selector='app.kubernetes.io/name=aurora-exporter'
             )
             
-            # Store resource version for optimistic locking
-            self._resource_version = configmap.metadata.resource_version
-            
-            if not configmap.data or 'clusters.json' not in configmap.data:
-                logger.warning(f"ConfigMap {self.configmap_name} exists but has no cluster data")
+            if not services.items:
+                logger.info("No Aurora resources found in Kubernetes")
                 return None
             
-            clusters_json = configmap.data['clusters.json']
+            # Reconstruct clusters from service annotations
+            clusters: Dict[str, AuroraCluster] = {}
             
-            # Validate JSON data is not empty or malformed
-            if not clusters_json.strip():
-                logger.warning(f"ConfigMap {self.configmap_name} has empty cluster data")
-                return None
-            
-            state = ClusterState.from_json(clusters_json)
-            
-            # Validate state structure
-            if not isinstance(state.clusters, dict):
-                logger.error(f"ConfigMap {self.configmap_name} has invalid cluster data structure")
-                return None
-            
-            logger.info(f"Loaded state with {len(state.clusters)} clusters from ConfigMap")
-            return state
-            
-        except ApiException as e:
-            if e.status == 404:
-                logger.info(f"ConfigMap {self.configmap_name} not found, will create new state")
-                return None
-            elif e.status == 403:
-                logger.error(f"Insufficient permissions to read ConfigMap {self.configmap_name}: {e}")
-                raise
-            else:
-                logger.error(f"Failed to read ConfigMap {self.configmap_name}: {e}")
-                raise
-        except (ValueError, KeyError, TypeError) as e:
-            logger.error(f"ConfigMap {self.configmap_name} contains corrupted data: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error loading state from ConfigMap: {e}")
-            return None
-    
-    def save_state(self, state: ClusterState) -> bool:
-        """
-        Save cluster state to ConfigMap.
-        
-        Args:
-            state: ClusterState to save
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Update the last_updated timestamp
-            state.last_updated = datetime.utcnow()
-            
-            configmap_data = {
-                'clusters.json': state.to_json()
-            }
-            
-            # Try to update existing ConfigMap first
-            if self._resource_version:
-                try:
-                    configmap = client.V1ConfigMap(
-                        metadata=client.V1ObjectMeta(
-                            name=self.configmap_name,
-                            namespace=self.namespace,
-                            resource_version=self._resource_version
-                        ),
-                        data=configmap_data
-                    )
-                    
-                    updated_configmap = self.k8s_client.replace_namespaced_config_map(
-                        name=self.configmap_name,
-                        namespace=self.namespace,
-                        body=configmap
-                    )
-                    
-                    self._resource_version = updated_configmap.metadata.resource_version
-                    logger.info(f"Updated ConfigMap {self.configmap_name} with {len(state.clusters)} clusters")
-                    return True
-                    
-                except ApiException as e:
-                    if e.status == 409:  # Conflict - resource version mismatch
-                        logger.warning(f"ConfigMap {self.configmap_name} was modified by another process, retrying")
-                        # Clear resource version to force create/replace
-                        self._resource_version = None
-                    else:
-                        raise
-            
-            # Create new ConfigMap or replace without resource version
-            configmap = client.V1ConfigMap(
-                metadata=client.V1ObjectMeta(
-                    name=self.configmap_name,
-                    namespace=self.namespace
-                ),
-                data=configmap_data
-            )
-            
-            try:
-                created_configmap = self.k8s_client.create_namespaced_config_map(
-                    namespace=self.namespace,
-                    body=configmap
-                )
-                self._resource_version = created_configmap.metadata.resource_version
-                logger.info(f"Created ConfigMap {self.configmap_name} with {len(state.clusters)} clusters")
-                return True
+            for service in services.items:
+                annotations = service.metadata.annotations or {}
                 
-            except ApiException as e:
-                if e.status == 409:  # Already exists
-                    # Replace the existing ConfigMap
-                    replaced_configmap = self.k8s_client.replace_namespaced_config_map(
-                        name=self.configmap_name,
-                        namespace=self.namespace,
-                        body=configmap
-                    )
-                    self._resource_version = replaced_configmap.metadata.resource_version
-                    logger.info(f"Replaced ConfigMap {self.configmap_name} with {len(state.clusters)} clusters")
-                    return True
-                else:
-                    raise
+                # Skip services without cluster identifier
+                if 'aurora.aws/cluster-identifier' not in annotations:
+                    logger.warning(f"Service {service.metadata.name} missing cluster identifier annotation")
+                    continue
+                
+                cluster_id = annotations['aurora.aws/cluster-identifier']
+                
+                # Check if this is a cluster-level service or instance-level service
+                if 'aurora.aws/instance-identifier' in annotations:
+                    # This is an instance service
+                    instance = AuroraInstance.from_annotations(annotations)
                     
+                    # Add instance to its cluster (create cluster if needed)
+                    if cluster_id not in clusters:
+                        # We'll need to find the cluster-level service or create a minimal cluster
+                        clusters[cluster_id] = self._get_or_create_cluster_from_instance(
+                            cluster_id, instance, services.items
+                        )
+                    
+                    # Add instance to cluster if not already present
+                    if not any(inst.identifier == instance.identifier for inst in clusters[cluster_id].instances):
+                        clusters[cluster_id].instances.append(instance)
+                else:
+                    # This is a cluster-level service (if we support them in the future)
+                    if cluster_id not in clusters:
+                        cluster = AuroraCluster.from_annotations(annotations)
+                        clusters[cluster_id] = cluster
+            
+            if not clusters:
+                logger.info("No valid Aurora clusters found in Kubernetes resources")
+                return None
+            
+            logger.info(f"Loaded state with {len(clusters)} clusters from Kubernetes resources")
+            for cluster_id, cluster in clusters.items():
+                logger.info(f"  Cluster {cluster_id}: {len(cluster.instances)} instances")
+            
+            return ClusterState(
+                last_updated=datetime.utcnow(),
+                clusters=clusters
+            )
+            
         except ApiException as e:
             if e.status == 403:
-                logger.error(f"Insufficient permissions to save ConfigMap {self.configmap_name}: {e}")
-            elif e.status == 422:
-                logger.error(f"Invalid ConfigMap data for {self.configmap_name}: {e}")
+                logger.error(f"Insufficient permissions to list Services in namespace {self.namespace}: {e}")
+                raise
             else:
-                logger.error(f"Kubernetes API error saving ConfigMap {self.configmap_name}: {e}")
-            return False
+                logger.error(f"Failed to list Services in namespace {self.namespace}: {e}")
+                raise
         except Exception as e:
-            logger.error(f"Unexpected error saving state to ConfigMap {self.configmap_name}: {e}")
-            return False
+            logger.error(f"Unexpected error loading state from Kubernetes resources: {e}")
+            return None
+    
+    def _get_or_create_cluster_from_instance(
+        self, 
+        cluster_id: str, 
+        instance: AuroraInstance,
+        all_services: list
+    ) -> AuroraCluster:
+        """
+        Get cluster information from a cluster-level service or create from instance data.
+        
+        Args:
+            cluster_id: Cluster identifier
+            instance: Instance that belongs to this cluster
+            all_services: All services to search for cluster-level service
+            
+        Returns:
+            AuroraCluster object
+        """
+        # Try to find a cluster-level service (without instance-identifier annotation)
+        for service in all_services:
+            annotations = service.metadata.annotations or {}
+            if (annotations.get('aurora.aws/cluster-identifier') == cluster_id and
+                'aurora.aws/instance-identifier' not in annotations):
+                return AuroraCluster.from_annotations(annotations)
+        
+        # No cluster-level service found, create minimal cluster from instance data
+        # This handles the case where we only have instance-level resources
+        logger.debug(f"Creating cluster {cluster_id} from instance data")
+        
+        # Infer engine from instance endpoint or use a default
+        # In practice, we'll get this from AWS discovery, but for state reconstruction
+        # we need to handle missing data gracefully
+        engine = 'aurora-mysql'  # Default, will be corrected on next AWS sync
+        
+        return AuroraCluster(
+            identifier=cluster_id,
+            engine=engine,
+            endpoint='',  # Will be updated from AWS
+            port=instance.port,
+            secrets_arn='',  # Will be updated from AWS
+            status=instance.status,
+            last_seen=instance.last_seen or datetime.utcnow(),
+            discovered_at=instance.discovered_at,
+            instances=[]
+        )
+    
+    def get_deployed_cluster_identifiers(self) -> Set[str]:
+        """
+        Get set of cluster identifiers that are currently deployed in Kubernetes.
+        
+        Returns:
+            Set of cluster identifier strings
+        """
+        try:
+            services = self.k8s_client.list_namespaced_service(
+                namespace=self.namespace,
+                label_selector='app.kubernetes.io/name=aurora-exporter'
+            )
+            
+            cluster_ids = set()
+            for service in services.items:
+                annotations = service.metadata.annotations or {}
+                if 'aurora.aws/cluster-identifier' in annotations:
+                    cluster_ids.add(annotations['aurora.aws/cluster-identifier'])
+            
+            return cluster_ids
+            
+        except ApiException as e:
+            logger.error(f"Failed to list cluster identifiers: {e}")
+            return set()
+    
+    def get_deployed_instance_identifiers(self, cluster_id: str) -> Set[str]:
+        """
+        Get set of instance identifiers for a specific cluster that are deployed in Kubernetes.
+        
+        Args:
+            cluster_id: Cluster identifier to query instances for
+            
+        Returns:
+            Set of instance identifier strings
+        """
+        try:
+            # Query services for this specific cluster
+            # Note: We use annotation-based filtering since cluster ID is in annotations, not labels
+            services = self.k8s_client.list_namespaced_service(
+                namespace=self.namespace,
+                label_selector='app.kubernetes.io/name=aurora-exporter'
+            )
+            
+            instance_ids = set()
+            for service in services.items:
+                annotations = service.metadata.annotations or {}
+                # Filter by cluster ID and get instance identifiers
+                if (annotations.get('aurora.aws/cluster-identifier') == cluster_id and
+                    'aurora.aws/instance-identifier' in annotations):
+                    instance_ids.add(annotations['aurora.aws/instance-identifier'])
+            
+            return instance_ids
+            
+        except ApiException as e:
+            logger.error(f"Failed to list instance identifiers for cluster {cluster_id}: {e}")
+            return set()
     

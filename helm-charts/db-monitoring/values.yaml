@@ -113,5 +113,6 @@ sql-exporter:
     limits:
       cpu: 500m
       memory: 512Mi
+
 # Legacy MySQL and PostgreSQL static exporters removed
 # Aurora Discovery now handles Aurora MySQL and PostgreSQL cluster monitoring dynamically

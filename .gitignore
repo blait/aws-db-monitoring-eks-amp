@@ -6,7 +6,15 @@ helm-charts/*/charts/redis-exporter/
 *-resolved.yaml
 adot-trust-policy.json 
 
+# README.md
+_*.md
+README_v0.md
+
 # Kiro
 .kiro/*
 
+# _pycache_
+*.pyc
+
 memo.txt
+
