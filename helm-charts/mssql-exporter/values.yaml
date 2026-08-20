@@ -1,0 +1,76 @@
+# =============================================================================
+# MSSQL Exporter Helm Values
+# =============================================================================
+# 용도: RDS SQL Server 메트릭 수집
+# 배포 방식: HA (2 레플리카, AZ 분산)
+# 스크래핑: ADOT Collector가 annotation 기반으로 수집
+# 포트: 4000 (prometheus-mssql-exporter 기본 포트)
+# =============================================================================
+
+# -- 컨테이너 이미지 설정
+image:
+  repository: awaragi/prometheus-mssql-exporter
+  tag: "0.14.3"
+  pullPolicy: IfNotPresent
+
+# -- MSSQL 연결 설정
+mssql:
+  # deploy-all.sh에서 --set으로 실제 RDS 엔드포인트 오버라이드
+  host: "PLACEHOLDER"
+  port: 1433
+  username: "admin"
+  password: "[REDACTED_PASSWORD]"
+
+# -- 레플리카 수 (HA 구성)
+replicaCount: 2
+
+# -- Pod Annotations: ADOT Collector의 Prometheus SD가 이 annotation을 기반으로 스크래핑
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "4000"
+
+# -- 서비스 설정
+service:
+  type: ClusterIP
+  port: 4000
+  targetPort: 4000
+
+# -- 서비스 어카운트
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# =============================================================================
+# 리소스 제한 설정
+# =============================================================================
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# =============================================================================
+# Pod Anti-Affinity: AZ 분산 배치 (고가용성)
+# =============================================================================
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - mssql-exporter
+          # AZ(가용 영역) 단위로 분산 배치
+          topologyKey: topology.kubernetes.io/zone
+
+# -- Node Selector (필요 시)
+nodeSelector: {}
+
+# -- Tolerations (필요 시)
+tolerations: []

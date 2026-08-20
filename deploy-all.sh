@@ -304,7 +304,7 @@ if [ "$SKIP_INFRA" = false ]; then
     log_info "CloudFormation 스택 생성: ${WORKSHOP_NAME}-network"
     aws cloudformation create-stack \
         --stack-name ${WORKSHOP_NAME}-network \
-        --template-body file://networking-stack.yaml \
+        --template-body file://infrastructure/networking-stack.yaml \
         --parameters \
             ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
             ParameterKey=VpcCidr,ParameterValue=${VPC_CIDR} \
@@ -384,7 +384,7 @@ if [ "$SKIP_DB" = false ] && [ "$SKIP_INFRA" = false ]; then
     log_info "데이터베이스 스택 생성 중... (Aurora MySQL, Aurora PostgreSQL, SQL Server)"
     aws cloudformation create-stack \
         --stack-name ${WORKSHOP_NAME}-db \
-        --template-body file://database-stack.yaml \
+        --template-body file://infrastructure/database-stack.yaml \
         --parameters \
             ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
             ParameterKey=VpcId,ParameterValue=${VPC_ID} \
@@ -400,7 +400,7 @@ if [ "$SKIP_DB" = false ] && [ "$SKIP_INFRA" = false ]; then
     log_info "캐시 스택 생성 중... (ElastiCache Valkey)"
     aws cloudformation create-stack \
         --stack-name ${WORKSHOP_NAME}-cache \
-        --template-body file://cache-stack.yaml \
+        --template-body file://infrastructure/cache-stack.yaml \
         --parameters \
             ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
             ParameterKey=VpcId,ParameterValue=${VPC_ID} \
@@ -493,7 +493,7 @@ export PRIVATE_SUBNET_3=$(echo $PRIVATE_SUBNETS | cut -d',' -f3)
 
 # EKS 클러스터 설정 파일 생성 (envsubst)
 log_info "EKS 클러스터 설정 파일 생성 중..."
-envsubst < eks-cluster.yaml > eks-cluster-resolved.yaml
+envsubst < infrastructure/eks-cluster.yaml > eks-cluster-resolved.yaml
 
 # 클러스터 생성
 log_wait "EKS 클러스터 생성 중... (약 15~20분)"

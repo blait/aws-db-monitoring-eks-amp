@@ -1,0 +1,256 @@
+# =============================================================================
+# ADOT Collector 설정 (통합 DB 모니터링)
+# 모든 DB Exporter (MySQL, PostgreSQL, MSSQL, Redis)를 자동 스크래핑합니다.
+# Kubernetes Pod Annotation 기반 서비스 디스커버리를 사용합니다.
+# =============================================================================
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: adot-collector
+  namespace: observability
+  labels:
+    app: adot-collector
+spec:
+  mode: deployment
+  serviceAccount: adot-collector
+  image: public.ecr.aws/aws-observability/aws-otel-collector:v0.39.0
+  config: |
+    receivers:
+      # ─────────────────────────────────────────────────────────────────
+      # Prometheus Receiver: Kubernetes Pod 기반 자동 디스커버리
+      # prometheus.io/scrape annotation이 "true"인 모든 Pod을 자동 스크래핑
+      # ─────────────────────────────────────────────────────────────────
+      prometheus:
+        config:
+          global:
+            scrape_interval: 30s
+            evaluation_interval: 30s
+          
+          scrape_configs:
+            # ─────────────────────────────────────────────────────────
+            # Job 1: 자동 디스커버리된 모든 DB Exporter (annotation 기반)
+            # db-discovery가 생성한 모든 Exporter Pod을 자동 감지
+            # ─────────────────────────────────────────────────────────
+            - job_name: 'db-exporters-auto-discovery'
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                # prometheus.io/scrape: "true" annotation이 있는 Pod만 대상
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+                
+                # db-discovery/managed-by: auto-discovery label이 있는 Pod만 대상
+                - source_labels: [__meta_kubernetes_pod_label_db_discovery_managed_by]
+                  action: keep
+                  regex: auto-discovery
+                
+                # annotation에서 metrics 경로 가져오기
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  action: replace
+                  target_label: __metrics_path__
+                  regex: (.+)
+                
+                # annotation에서 포트 가져오기
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+                
+                # 유용한 라벨 추가
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  action: replace
+                  target_label: db_instance
+                
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  action: replace
+                  target_label: exporter_type
+                
+                - source_labels: [__meta_kubernetes_namespace]
+                  action: replace
+                  target_label: namespace
+                
+                - source_labels: [__meta_kubernetes_pod_name]
+                  action: replace
+                  target_label: pod
+                
+                # db-discovery annotation에서 메타데이터 추출
+                - source_labels: [__meta_kubernetes_pod_annotation_db_discovery_engine]
+                  action: replace
+                  target_label: db_engine
+                
+                - source_labels: [__meta_kubernetes_pod_annotation_db_discovery_endpoint]
+                  action: replace
+                  target_label: db_endpoint
+                
+                - source_labels: [__meta_kubernetes_pod_annotation_db_discovery_cluster_id]
+                  action: replace
+                  target_label: db_cluster
+
+            # ─────────────────────────────────────────────────────────
+            # Job 2: MySQL Exporter 전용 (상세 메트릭 라벨링)
+            # ─────────────────────────────────────────────────────────
+            - job_name: 'mysql-exporters'
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  action: keep
+                  regex: mysql-exporter
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: (.+)
+                  target_label: __address__
+                  replacement: $1
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  target_label: db_instance
+                - action: replace
+                  target_label: db_engine
+                  replacement: mysql
+
+            # ─────────────────────────────────────────────────────────
+            # Job 3: PostgreSQL Exporter 전용
+            # ─────────────────────────────────────────────────────────
+            - job_name: 'postgresql-exporters'
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  action: keep
+                  regex: postgresql-exporter
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  target_label: db_instance
+                - action: replace
+                  target_label: db_engine
+                  replacement: postgresql
+
+            # ─────────────────────────────────────────────────────────
+            # Job 4: MS SQL Exporter 전용
+            # ─────────────────────────────────────────────────────────
+            - job_name: 'mssql-exporters'
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  action: keep
+                  regex: mssql-exporter
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  target_label: db_instance
+                - action: replace
+                  target_label: db_engine
+                  replacement: sqlserver
+
+            # ─────────────────────────────────────────────────────────
+            # Job 5: Redis/Valkey Exporter 전용
+            # ─────────────────────────────────────────────────────────
+            - job_name: 'redis-exporters'
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  action: keep
+                  regex: redis-exporter
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  target_label: db_instance
+                - action: replace
+                  target_label: db_engine
+                  replacement: redis
+
+            # ─────────────────────────────────────────────────────────
+            # Job 6: ADOT Collector 자체 메트릭
+            # ─────────────────────────────────────────────────────────
+            - job_name: 'adot-collector-self'
+              static_configs:
+                - targets: ['localhost:8888']
+
+    processors:
+      # 배치 처리 (네트워크 효율성)
+      batch:
+        timeout: 30s
+        send_batch_size: 1000
+        send_batch_max_size: 1500
+      
+      # 메모리 제한 (OOM 방지)
+      memory_limiter:
+        check_interval: 5s
+        limit_mib: 512
+        spike_limit_mib: 128
+
+    exporters:
+      # Amazon Managed Prometheus로 remote write
+      prometheusremotewrite:
+        endpoint: "${AMP_REMOTE_WRITE_ENDPOINT}"
+        auth:
+          authenticator: sigv4auth
+        resource_to_telemetry_conversion:
+          enabled: true
+
+    extensions:
+      # AWS SigV4 인증 (AMP 접근)
+      sigv4auth:
+        region: "${AWS_REGION}"
+        service: "aps"
+      
+      # 헬스 체크
+      health_check:
+        endpoint: 0.0.0.0:13133
+      
+      # pprof (디버깅)
+      pprof:
+        endpoint: 0.0.0.0:1777
+
+    service:
+      extensions: [sigv4auth, health_check, pprof]
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite]

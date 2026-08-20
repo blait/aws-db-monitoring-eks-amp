@@ -1,0 +1,75 @@
+# =============================================================================
+# Prometheus MySQL Exporter Helm Values
+# =============================================================================
+# 차트: prometheus-community/prometheus-mysql-exporter
+# 용도: RDS MySQL/Aurora MySQL 메트릭 수집
+# 배포 방식: HA Active-Active (2 레플리카, AZ 분산)
+# 스크래핑: ADOT Collector가 annotation 기반으로 수집
+# =============================================================================
+
+# -- MySQL 연결 설정
+mysql:
+  # deploy-all.sh의 auto-discovery가 관리하는 호스트 주소
+  host: "PLACEHOLDER"
+  port: 3306
+  user: "exporter"
+  pass: "ExporterPass123!"
+  # 빈 문자열 = 모든 데이터베이스 대상
+  db: ""
+
+# -- ServiceMonitor 비활성화 (ADOT가 직접 스크래핑)
+serviceMonitor:
+  enabled: false
+
+# -- Pod Annotations: ADOT Collector의 Prometheus SD가 이 annotation을 기반으로 스크래핑
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9104"
+
+# -- 레플리카 수 (HA Active-Active 구성)
+replicaCount: 2
+
+# =============================================================================
+# Pod Anti-Affinity: AZ 분산 배치 (고가용성)
+# =============================================================================
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - prometheus-mysql-exporter
+          # AZ(가용 영역) 단위로 분산 배치
+          topologyKey: topology.kubernetes.io/zone
+
+# =============================================================================
+# 리소스 제한 설정
+# =============================================================================
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# =============================================================================
+# MySQL Collector 설정: 수집할 메트릭 카테고리
+# =============================================================================
+collectors:
+  # information_schema.tables — 대규모 환경에서 부하 유발, 비활성화
+  info_schema.tables: false
+  # Performance Schema: 쿼리 성능 분석용
+  perf_schema.eventsstatements: true
+  perf_schema.eventsstatementshistory: true
+  # 글로벌 상태/변수
+  global_status: true
+  global_variables: true
+  # 리플리케이션 상태 (Aurora 읽기 전용 복제본 모니터링)
+  slave_status: true
+  # InnoDB 엔진 내부 메트릭
+  innodb_metrics: true

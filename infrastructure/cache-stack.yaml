@@ -1,3 +1,124 @@
-# cache-stack.yaml
-# 원본 레포에서 가져오세요.
-# ElastiCache Valkey 클러스터 구성
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  ElastiCache Valkey (Redis 호환) CloudFormation 스택
+  Multi-AZ 복제 그룹으로 고가용성을 보장합니다.
+
+# ==============================================================================
+# Parameters
+# ==============================================================================
+Parameters:
+  EnvironmentName:
+    Description: 환경 이름 (예: dev, staging, prod)
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Default: dev
+
+  VpcId:
+    Description: ElastiCache를 배포할 VPC ID
+    Type: AWS::EC2::VPC::Id
+
+  DatabaseSubnets:
+    Description: 데이터베이스 서브넷 ID 목록 (쉼표 구분)
+    Type: CommaDelimitedList
+
+  PrivateSubnetCidrs:
+    Description: 프라이빗 서브넷 CIDR 목록 (쉼표 구분, 인바운드 허용 대상)
+    Type: CommaDelimitedList
+
+# ==============================================================================
+# Resources
+# ==============================================================================
+Resources:
+  # ----------------------------------------------------------------------------
+  # ElastiCache Subnet Group — 데이터베이스 서브넷에 배치
+  # ----------------------------------------------------------------------------
+  ElastiCacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      CacheSubnetGroupName: !Sub '${EnvironmentName}-valkey-subnet-group'
+      Description: !Sub '${EnvironmentName} 환경의 Valkey 캐시용 서브넷 그룹'
+      SubnetIds: !Ref DatabaseSubnets
+
+  # ----------------------------------------------------------------------------
+  # Security Group — 프라이빗 서브넷에서의 6379 포트 인바운드만 허용
+  # ----------------------------------------------------------------------------
+  ElastiCacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${EnvironmentName}-valkey-sg'
+      GroupDescription: !Sub '${EnvironmentName} Valkey 캐시 보안 그룹 - 프라이빗 서브넷에서 6379 포트 허용'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # 프라이빗 서브넷 1에서의 인바운드 허용
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
+          Description: 프라이빗 서브넷 AZ1에서의 Valkey 접근 허용
+        # 프라이빗 서브넷 2에서의 인바운드 허용
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
+          Description: 프라이빗 서브넷 AZ2에서의 Valkey 접근 허용
+        # 프라이빗 서브넷 3에서의 인바운드 허용
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
+          Description: 프라이빗 서브넷 AZ3에서의 Valkey 접근 허용
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-valkey-sg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ----------------------------------------------------------------------------
+  # ElastiCache Replication Group — Valkey 엔진, Multi-AZ 복제 그룹
+  # ----------------------------------------------------------------------------
+  ElastiCacheReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupId: !Sub '${EnvironmentName}-valkey-cluster'
+      ReplicationGroupDescription: !Sub '${EnvironmentName} 환경의 Valkey 캐시 복제 그룹 (Multi-AZ)'
+      Engine: valkey
+      EngineVersion: '7.2'
+      CacheNodeType: cache.t4g.medium
+      NumCacheClusters: 2
+      MultiAZEnabled: true
+      AutomaticFailoverEnabled: true
+      CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
+      SecurityGroupIds:
+        - !GetAtt ElastiCacheSecurityGroup.GroupId
+      Port: 6379
+      # 유지보수 및 백업 설정
+      PreferredMaintenanceWindow: sun:05:00-sun:06:00
+      SnapshotRetentionLimit: 7
+      SnapshotWindow: 03:00-04:00
+      # 전송 중 암호화 활성화
+      TransitEncryptionEnabled: true
+      AtRestEncryptionEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-valkey-cluster'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+# ==============================================================================
+# Outputs
+# ==============================================================================
+Outputs:
+  ElastiCacheRedisEndpoint:
+    Description: Valkey (Redis 호환) Primary 엔드포인트 주소
+    Value: !GetAtt ElastiCacheReplicationGroup.PrimaryEndPoint.Address
+    Export:
+      Name: !Sub '${EnvironmentName}-ElastiCacheRedisEndpoint'
+
+  ElastiCacheRedisPort:
+    Description: Valkey (Redis 호환) Primary 엔드포인트 포트
+    Value: !GetAtt ElastiCacheReplicationGroup.PrimaryEndPoint.Port
+    Export:
+      Name: !Sub '${EnvironmentName}-ElastiCacheRedisPort'

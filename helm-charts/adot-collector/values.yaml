@@ -1,0 +1,172 @@
+# =============================================================================
+# ADOT (AWS Distro for OpenTelemetry) Collector Helm Values
+# =============================================================================
+# 차트: open-telemetry/opentelemetry-collector
+# 용도: EKS 클러스터 내 메트릭 수집 → Amazon Managed Prometheus(AMP)로 전송
+# 배포 방식: Deployment 모드 (DaemonSet 아님)
+# =============================================================================
+
+# -- 배포 모드: deployment | daemonset | statefulset
+mode: deployment
+
+# -- 레플리카 수 (HA 구성)
+replicaCount: 2
+
+# -- 서비스 어카운트 설정 (IRSA 연동)
+serviceAccount:
+  create: true
+  name: adot-collector
+  annotations:
+    # deploy-all.sh에서 --set으로 실제 ARN 오버라이드
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/ADOT_COLLECTOR_ROLE"
+
+# =============================================================================
+# OpenTelemetry Collector 파이프라인 구성
+# =============================================================================
+config:
+  # ---------------------------------------------------------------------------
+  # Receivers: 메트릭 수집 소스 정의
+  # ---------------------------------------------------------------------------
+  receivers:
+    # Prometheus 스크래핑 — Kubernetes Pod 자동 탐색
+    prometheus:
+      config:
+        scrape_configs:
+          - job_name: "kubernetes-pods"
+            # 스크래핑 주기
+            scrape_interval: 30s
+            scrape_timeout: 10s
+            # Kubernetes SD를 통한 Pod 자동 탐색
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names:
+                    - observability
+            # Pod annotation 기반 필터링
+            relabel_configs:
+              # prometheus.io/scrape="true" annotation이 있는 Pod만 스크래핑
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                action: keep
+                regex: "true"
+              # prometheus.io/port annotation으로 포트 오버라이드
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                action: replace
+                target_label: __address__
+                regex: (.+)
+                replacement: "${1}:${2}"
+              # prometheus.io/path annotation으로 경로 오버라이드
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                action: replace
+                target_label: __metrics_path__
+                regex: (.+)
+              # Pod 이름 레이블 추가
+              - source_labels: [__meta_kubernetes_pod_name]
+                action: replace
+                target_label: pod
+              # 네임스페이스 레이블 추가
+              - source_labels: [__meta_kubernetes_namespace]
+                action: replace
+                target_label: namespace
+              # 노드 이름 레이블 추가
+              - source_labels: [__meta_kubernetes_pod_node_name]
+                action: replace
+                target_label: node
+
+    # OTLP 수신기 — 애플리케이션에서 직접 전송하는 텔레메트리 수신
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+
+  # ---------------------------------------------------------------------------
+  # Processors: 메트릭 가공 및 최적화
+  # ---------------------------------------------------------------------------
+  processors:
+    # 배치 처리 — 네트워크 효율성 향상
+    batch:
+      send_batch_size: 1024
+      timeout: 5s
+
+    # 메트릭 필터링 — 불필요한 Go/Process 메트릭 드롭 (카디널리티 약 30% 절감)
+    filter/drop:
+      metrics:
+        metric:
+          - "go_*"
+          - "process_*"
+
+    # 메모리 리미터 — OOM 방지
+    memory_limiter:
+      limit_mib: 512
+      spike_limit_mib: 128
+      check_interval: 5s
+
+  # ---------------------------------------------------------------------------
+  # Exporters: 메트릭 전송 대상
+  # ---------------------------------------------------------------------------
+  exporters:
+    # Amazon Managed Prometheus (AMP)로 Remote Write
+    prometheusremotewrite:
+      # deploy-all.sh에서 --set으로 실제 AMP 엔드포인트 오버라이드
+      endpoint: "https://aps-workspaces.REGION.amazonaws.com/workspaces/WORKSPACE_ID/api/v1/remote_write"
+      aws_auth:
+        region: "ap-northeast-2"
+        service: "aps"
+
+  # ---------------------------------------------------------------------------
+  # Service Pipeline: 수신 → 처리 → 전송 흐름 정의
+  # ---------------------------------------------------------------------------
+  service:
+    pipelines:
+      metrics:
+        receivers:
+          - prometheus
+        processors:
+          - memory_limiter
+          - filter/drop
+          - batch
+        exporters:
+          - prometheusremotewrite
+
+# =============================================================================
+# 리소스 제한 설정
+# =============================================================================
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+# =============================================================================
+# Pod Anti-Affinity: 동일 노드에 배치 방지 (가용성 향상)
+# =============================================================================
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - opentelemetry-collector
+          topologyKey: kubernetes.io/hostname
+
+# =============================================================================
+# 포트 설정 (Service 노출용)
+# =============================================================================
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP

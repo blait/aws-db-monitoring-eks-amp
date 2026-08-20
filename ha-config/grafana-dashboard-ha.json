@@ -1,0 +1,547 @@
+{
+  "__doc__": "AWS DB 통합 모니터링 대시보드 (HA Exporter + Recording Rules)",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "AWS 데이터베이스 통합 모니터링 - HA Exporter Active-Active + Recording Rules Dedup",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "📊 Exporter Health (HA 상태)",
+      "type": "row"
+    },
+    {
+      "title": "Exporter 가용 상태",
+      "description": "각 DB별 살아있는 Exporter Pod 수 (정상: 2, 경고: 1, 장애: 0)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 1 },
+      "id": 101,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:exporter_up_count{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} ({{ db_engine }})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } },
+            { "type": "value", "options": { "1": { "text": "DEGRADED", "color": "orange" } } },
+            { "type": "value", "options": { "2": { "text": "HEALTHY", "color": "green" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Exporter Scrape 소요시간",
+      "description": "메트릭 수집에 걸리는 시간 (30초 이상이면 문제)",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 1 },
+      "id": 102,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:exporter_scrape_duration{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+    {
+      "title": "HA Failover 이벤트",
+      "description": "Exporter Pod 수 변동 (HA failover 감지)",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
+      "id": 103,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:exporter_up_count{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} pods"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 200,
+      "title": "🐬 MySQL / Aurora MySQL",
+      "type": "row"
+    },
+    {
+      "title": "Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 6 },
+      "id": 201,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mysql_threads_connected{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Connected"
+        },
+        {
+          "expr": "db:mysql_threads_running{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Running"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "title": "QPS (Queries/sec)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 6 },
+      "id": 202,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mysql_qps{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Buffer Pool Hit Ratio",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "id": 203,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mysql_buffer_pool_hit_ratio{db_instance=~\"$db_instance\"} * 100",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 90 },
+              { "color": "green", "value": 99 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Slow Queries Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "id": 204,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mysql_slow_queries_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Replication Lag",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "id": 205,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mysql_replication_lag{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "InnoDB Row Operations",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "id": 206,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mysql_innodb_rows_read_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Read"
+        },
+        {
+          "expr": "db:mysql_innodb_rows_inserted_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Insert"
+        },
+        {
+          "expr": "db:mysql_innodb_rows_updated_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Update"
+        },
+        {
+          "expr": "db:mysql_innodb_rows_deleted_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Delete"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 300,
+      "title": "🐘 PostgreSQL / Aurora PostgreSQL",
+      "type": "row"
+    },
+    {
+      "title": "Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 23 },
+      "id": 301,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:pg_active_connections{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Active"
+        },
+        {
+          "expr": "db:pg_idle_connections{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Idle"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "title": "TPS (Transactions/sec)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 23 },
+      "id": 302,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:pg_tps{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Cache Hit Ratio",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 23 },
+      "id": 303,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:pg_cache_hit_ratio{db_instance=~\"$db_instance\"} * 100",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 90 },
+              { "color": "green", "value": 99 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Tuple Operations Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 31 },
+      "id": 304,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:pg_tuples_fetched_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Fetched"
+        },
+        {
+          "expr": "db:pg_tuples_inserted_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Inserted"
+        },
+        {
+          "expr": "db:pg_tuples_updated_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Updated"
+        },
+        {
+          "expr": "db:pg_tuples_deleted_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Deleted"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Replication Lag",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 31 },
+      "id": 305,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:pg_replication_lag_bytes{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "title": "Dead Tuples (Vacuum 필요)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 31 },
+      "id": 306,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:pg_dead_tuples{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "id": 400,
+      "title": "🔷 MS SQL Server",
+      "type": "row"
+    },
+    {
+      "title": "Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 40 },
+      "id": 401,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mssql_connections{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "title": "Batch Requests/sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 40 },
+      "id": 402,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mssql_batch_requests_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Buffer Cache Hit Ratio / Page Life Expectancy",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 40 },
+      "id": 403,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:mssql_buffer_cache_hit_ratio{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Cache Hit %"
+        },
+        {
+          "expr": "db:mssql_page_life_expectancy{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - PLE (sec)"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 48 },
+      "id": 500,
+      "title": "🔴 Redis / Valkey (ElastiCache)",
+      "type": "row"
+    },
+    {
+      "title": "Connected Clients",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 49 },
+      "id": 501,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:redis_connected_clients{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "title": "Operations/sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 49 },
+      "id": 502,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:redis_ops_per_sec{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Hit Ratio",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 49 },
+      "id": 503,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:redis_hit_ratio{db_instance=~\"$db_instance\"} * 100",
+          "legendFormat": "{{ db_instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 80 },
+              { "color": "green", "value": 95 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 57 },
+      "id": 504,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:redis_memory_used_bytes{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Used"
+        },
+        {
+          "expr": "db:redis_memory_max_bytes{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Max"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "title": "Evicted & Expired Keys",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 57 },
+      "id": 505,
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "db:redis_evicted_keys_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Evicted"
+        },
+        {
+          "expr": "db:redis_expired_keys_rate{db_instance=~\"$db_instance\"}",
+          "legendFormat": "{{ db_instance }} - Expired"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["db-monitoring", "ha", "recording-rules", "aws"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Data Source",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "definition": "label_values(db:exporter_available, db_instance)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "DB Instance",
+        "multi": true,
+        "name": "db_instance",
+        "query": "label_values(db:exporter_available, db_instance)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "definition": "label_values(db:exporter_available, db_engine)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "DB Engine",
+        "multi": true,
+        "name": "db_engine",
+        "query": "label_values(db:exporter_available, db_engine)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Asia/Seoul",
+  "title": "AWS DB 통합 모니터링 (HA + Dedup)",
+  "uid": "aws-db-monitoring-ha",
+  "version": 1
+}

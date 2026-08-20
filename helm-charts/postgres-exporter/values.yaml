@@ -1,0 +1,66 @@
+# =============================================================================
+# Prometheus PostgreSQL Exporter Helm Values
+# =============================================================================
+# 차트: prometheus-community/prometheus-postgres-exporter
+# 용도: RDS PostgreSQL/Aurora PostgreSQL 메트릭 수집
+# 배포 방식: HA (2 레플리카, AZ 분산)
+# 스크래핑: ADOT Collector가 annotation 기반으로 수집
+# =============================================================================
+
+# -- 데이터소스 연결 설정
+config:
+  datasource:
+    # deploy-all.sh에서 --set으로 실제 RDS 엔드포인트 오버라이드
+    host: "PLACEHOLDER"
+    port: "5432"
+    user: "exporter"
+    password: "[REDACTED_PASSWORD]"
+    database: "postgres"
+    # SSL 필수 (RDS 통신 암호화)
+    sslmode: "require"
+  # 모든 데이터베이스 자동 탐색
+  autoDiscoverDatabases: true
+  # database collector 활성화 (pg_stat_database 등)
+  disableCollectorDatabase: false
+  # bgwriter collector 활성화 (pg_stat_bgwriter)
+  disableCollectorBgwriter: false
+
+# -- ServiceMonitor 비활성화 (ADOT가 직접 스크래핑)
+serviceMonitor:
+  enabled: false
+
+# -- Pod Annotations: ADOT Collector의 Prometheus SD가 이 annotation을 기반으로 스크래핑
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9187"
+
+# -- 레플리카 수 (HA 구성)
+replicaCount: 2
+
+# =============================================================================
+# Pod Anti-Affinity: AZ 분산 배치 (고가용성)
+# =============================================================================
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - prometheus-postgres-exporter
+          # AZ(가용 영역) 단위로 분산 배치
+          topologyKey: topology.kubernetes.io/zone
+
+# =============================================================================
+# 리소스 제한 설정
+# =============================================================================
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

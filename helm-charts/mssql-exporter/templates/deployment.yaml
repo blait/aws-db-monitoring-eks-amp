@@ -1,0 +1,76 @@
+# =============================================================================
+# MSSQL Exporter Deployment
+# =============================================================================
+# awaragi/prometheus-mssql-exporter 컨테이너를 배포
+# 환경변수로 MSSQL 연결 정보 전달
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mssql-exporter.fullname" . }}
+  labels:
+    {{- include "mssql-exporter.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mssql-exporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mssql-exporter.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "mssql-exporter.serviceAccountName" . }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # MSSQL 연결 정보를 환경변수로 전달
+          env:
+            - name: MSSQL_HOST
+              value: {{ .Values.mssql.host | quote }}
+            - name: MSSQL_PORT
+              value: {{ .Values.mssql.port | quote }}
+            - name: MSSQL_USER
+              value: {{ .Values.mssql.username | quote }}
+            - name: MSSQL_PASSWORD
+              value: {{ .Values.mssql.password | quote }}
+          ports:
+            - name: metrics
+              containerPort: 4000
+              protocol: TCP
+          # 헬스체크: /metrics 엔드포인트 확인
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

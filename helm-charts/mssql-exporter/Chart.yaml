@@ -1,0 +1,20 @@
+# =============================================================================
+# MSSQL Exporter Helm Chart
+# =============================================================================
+# prometheus-community에 공식 MSSQL exporter 차트가 없으므로 직접 작성
+# Exporter 이미지: awaragi/prometheus-mssql-exporter
+# =============================================================================
+apiVersion: v2
+name: mssql-exporter
+description: Prometheus exporter for Microsoft SQL Server metrics
+type: application
+version: 1.0.0
+appVersion: "0.14.3"
+keywords:
+  - mssql
+  - sqlserver
+  - prometheus
+  - exporter
+  - monitoring
+maintainers:
+  - name: Platform Engineering Team
