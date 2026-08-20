@@ -1,0 +1,204 @@
+# =============================================================================
+# CloudFormation: 워크로드 계정에 배포할 모니터링 대상 역할
+# =============================================================================
+#
+# 이 템플릿을 각 워크로드 계정에 배포하면, 중앙 모니터링 계정이
+# 해당 계정의 DB 리소스를 디스커버리하고 메트릭을 수집할 수 있습니다.
+#
+# 배포 방법:
+#   1. 개별 계정: aws cloudformation deploy --template-file cross-account-role-cfn.yaml ...
+#   2. 여러 계정 한번에: CloudFormation StackSet 사용
+#
+# StackSet 배포:
+#   aws cloudformation create-stack-set \
+#     --stack-set-name DBMonitoringTargetRole \
+#     --template-body file://cross-account-role-cfn.yaml \
+#     --parameters ParameterKey=HubAccountId,ParameterValue=<중앙계정ID> \
+#     --permission-model SERVICE_MANAGED \
+#     --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false
+#
+#   aws cloudformation create-stack-instances \
+#     --stack-set-name DBMonitoringTargetRole \
+#     --deployment-targets OrganizationalUnitIds=ou-xxxx-yyyyyyyy \
+#     --regions ap-northeast-2 us-east-1 eu-west-1
+# =============================================================================
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  워크로드 계정용 DB 모니터링 대상 역할.
+  중앙 모니터링 계정이 이 계정의 DB 리소스를 디스커버리하고 메트릭을 수집할 수 있도록 허용합니다.
+
+Parameters:
+  HubAccountId:
+    Type: String
+    Description: "중앙 모니터링 계정 ID (EKS/AMP/AMG가 있는 계정)"
+    AllowedPattern: "^[0-9]{12}$"
+    ConstraintDescription: "12자리 AWS 계정 ID를 입력하세요."
+
+  HubEksRoleName:
+    Type: String
+    Default: "integrated-db-monitoring-discovery-role"
+    Description: "중앙 계정 EKS Discovery Pod의 IAM Role 이름"
+
+  ExternalId:
+    Type: String
+    Default: "db-monitoring-cross-account"
+    Description: "AssumeRole 시 사용할 External ID (보안 강화)"
+
+  EnableSecretsManagerAccess:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "DB 자격증명을 위한 Secrets Manager 읽기 권한 부여 여부"
+
+Conditions:
+  IncludeSecretsManager: !Equals [!Ref EnableSecretsManagerAccess, "true"]
+
+Resources:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 모니터링 대상 역할 (Discovery + CloudWatch 메트릭 읽기)
+  # ─────────────────────────────────────────────────────────────────────────
+  DBMonitoringTargetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: DBMonitoringTargetRole
+      Description: "중앙 모니터링 계정이 이 계정의 DB를 디스커버리하고 CloudWatch 메트릭을 수집하도록 허용"
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${HubAccountId}:role/${HubEksRoleName}"
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref ExternalId
+      Policies:
+        # ── RDS/Aurora 디스커버리 권한 ──
+        - PolicyName: RDSDiscoveryPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: RDSDescribe
+                Effect: Allow
+                Action:
+                  - "rds:DescribeDBClusters"
+                  - "rds:DescribeDBInstances"
+                  - "rds:DescribeDBClusterEndpoints"
+                  - "rds:ListTagsForResource"
+                  - "rds:DescribeDBSubnetGroups"
+                Resource: "*"
+
+        # ── ElastiCache 디스커버리 권한 ──
+        - PolicyName: ElastiCacheDiscoveryPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ElastiCacheDescribe
+                Effect: Allow
+                Action:
+                  - "elasticache:DescribeCacheClusters"
+                  - "elasticache:DescribeReplicationGroups"
+                  - "elasticache:ListTagsForResource"
+                Resource: "*"
+
+        # ── DynamoDB 디스커버리 권한 ──
+        - PolicyName: DynamoDBDiscoveryPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: DynamoDBDescribe
+                Effect: Allow
+                Action:
+                  - "dynamodb:ListTables"
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:ListTagsOfResource"
+                Resource: "*"
+
+        # ── CloudWatch 메트릭 읽기 (DynamoDB + RDS Enhanced Monitoring) ──
+        - PolicyName: CloudWatchReadPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudWatchRead
+                Effect: Allow
+                Action:
+                  - "cloudwatch:GetMetricData"
+                  - "cloudwatch:GetMetricStatistics"
+                  - "cloudwatch:ListMetrics"
+                  - "cloudwatch:DescribeAlarms"
+                Resource: "*"
+
+        # ── 태그 기반 필터링 ──
+        - PolicyName: TagReadPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: TagRead
+                Effect: Allow
+                Action:
+                  - "tag:GetResources"
+                  - "tag:GetTagKeys"
+                  - "tag:GetTagValues"
+                Resource: "*"
+
+        # ── VPC/네트워크 정보 (Exporter 배치 시 필요) ──
+        - PolicyName: EC2NetworkReadPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EC2NetworkRead
+                Effect: Allow
+                Action:
+                  - "ec2:DescribeVpcs"
+                  - "ec2:DescribeSubnets"
+                  - "ec2:DescribeSecurityGroups"
+                  - "ec2:DescribeVpcPeeringConnections"
+                  - "ec2:DescribeTransitGatewayAttachments"
+                Resource: "*"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Secrets Manager 접근 역할 (선택, DB 자격증명 읽기용)
+  # ─────────────────────────────────────────────────────────────────────────
+  SecretsManagerPolicy:
+    Type: AWS::IAM::Policy
+    Condition: IncludeSecretsManager
+    Properties:
+      PolicyName: SecretsManagerReadPolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SecretsManagerRead
+            Effect: Allow
+            Action:
+              - "secretsmanager:GetSecretValue"
+              - "secretsmanager:DescribeSecret"
+            Resource:
+              # db-monitoring/ 접두사가 있는 시크릿만 접근 허용
+              - !Sub "arn:aws:secretsmanager:*:${AWS::AccountId}:secret:db-monitoring/*"
+      Roles:
+        - !Ref DBMonitoringTargetRole
+
+Outputs:
+  RoleArn:
+    Description: "중앙 모니터링 계정의 config에 등록할 Role ARN"
+    Value: !GetAtt DBMonitoringTargetRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-RoleArn"
+
+  RoleName:
+    Description: "생성된 역할 이름"
+    Value: !Ref DBMonitoringTargetRole
+
+  AccountId:
+    Description: "이 워크로드 계정 ID"
+    Value: !Ref AWS::AccountId
+
+  SetupInstructions:
+    Description: "다음 단계 안내"
+    Value: !Sub |
+      역할이 생성되었습니다. 중앙 모니터링 계정의 multi-account-config.yaml에 
+      다음 항목을 추가하세요:
+        - id: "${AWS::AccountId}"
+          role_arn: "${DBMonitoringTargetRole.Arn}"
+          regions: ["${AWS::Region}"]

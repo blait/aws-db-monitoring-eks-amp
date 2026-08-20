@@ -1,0 +1,201 @@
+# =============================================================================
+# ADOT Collector — DynamoDB CloudWatch Receiver 설정
+# =============================================================================
+#
+# DynamoDB는 엔진 내부 접속이 불가하므로 별도 Exporter가 없습니다.
+# 대신 ADOT Collector의 CloudWatch Metrics Receiver를 사용하여
+# CloudWatch에서 DynamoDB 서비스 메트릭을 가져와 AMP로 전달합니다.
+#
+# HA 구성:
+#   - ADOT Collector replicas: 2 (기존 HA 구성 그대로 활용)
+#   - Target Allocator가 CloudWatch scrape도 자동 분산
+#   - Recording Rules에서 max without(pod)로 중복 제거
+#
+# 💰 비용:
+#   - CloudWatch GetMetricData API 호출 비용: ~$0.01/1000 메트릭 요청
+#   - 테이블 10개 × 메트릭 15개 × 24시간/일 = ~3,600 요청/일 ≈ $1.08/월
+#
+# 📌 적용 방법:
+#   기존 adot-collector-ha-dedup.yaml의 config 섹션에 아래 내용을 병합합니다.
+#   receivers, processors, exporters, service.pipelines에 각각 추가합니다.
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADOT Collector config에 추가할 receivers 섹션
+# ─────────────────────────────────────────────────────────────────────────────
+receivers:
+  # CloudWatch Metrics Receiver — DynamoDB
+  awscloudwatch/dynamodb:
+    region: "${AWS_REGION}"
+    # 수집 주기: 60초 (CloudWatch 기본 해상도)
+    poll_interval: 60s
+    
+    metrics:
+      named:
+        # ─────────────────────────────────────────────────────────────────
+        # DynamoDB 네임스페이스 메트릭
+        # ─────────────────────────────────────────────────────────────────
+        - namespace: AWS/DynamoDB
+          period: 60s
+          # 자동 디스커버리: 모든 테이블 대상 (regex ".*")
+          # 특정 테이블만 원하면 regex를 수정 (예: "^prod-.*")
+          dimensions:
+            - name: TableName
+              value: ".*"
+          
+          metrics:
+            # ───── 용량 관련 ─────
+            - name: ConsumedReadCapacityUnits
+              statistics:
+                - Sum
+                - Average
+            - name: ConsumedWriteCapacityUnits
+              statistics:
+                - Sum
+                - Average
+            - name: ProvisionedReadCapacityUnits
+              statistics:
+                - Average
+            - name: ProvisionedWriteCapacityUnits
+              statistics:
+                - Average
+            
+            # ───── 스로틀링 ─────
+            - name: ReadThrottleEvents
+              statistics:
+                - Sum
+            - name: WriteThrottleEvents
+              statistics:
+                - Sum
+            - name: ThrottledRequests
+              statistics:
+                - Sum
+            
+            # ───── 지연시간 (오퍼레이션별) ─────
+            - name: SuccessfulRequestLatency
+              statistics:
+                - Average
+                - p50
+                - p99
+            
+            # ───── 에러 ─────
+            - name: SystemErrors
+              statistics:
+                - Sum
+            - name: UserErrors
+              statistics:
+                - Sum
+            - name: ConditionalCheckFailedRequests
+              statistics:
+                - Sum
+            - name: TransactionConflict
+              statistics:
+                - Sum
+            
+            # ───── 아이템 ─────
+            - name: ReturnedItemCount
+              statistics:
+                - Sum
+                - Average
+            - name: ReturnedBytes
+              statistics:
+                - Sum
+                - Average
+
+        # ─────────────────────────────────────────────────────────────────
+        # GSI (Global Secondary Index) 레벨 메트릭
+        # ─────────────────────────────────────────────────────────────────
+        - namespace: AWS/DynamoDB
+          period: 60s
+          dimensions:
+            - name: TableName
+              value: ".*"
+            - name: GlobalSecondaryIndexName
+              value: ".*"
+          metrics:
+            - name: ConsumedReadCapacityUnits
+              statistics:
+                - Sum
+            - name: ConsumedWriteCapacityUnits
+              statistics:
+                - Sum
+            - name: ReadThrottleEvents
+              statistics:
+                - Sum
+            - name: WriteThrottleEvents
+              statistics:
+                - Sum
+
+        # ─────────────────────────────────────────────────────────────────
+        # 계정 레벨 메트릭 (한도 모니터링)
+        # ─────────────────────────────────────────────────────────────────
+        - namespace: AWS/DynamoDB
+          period: 300s
+          dimensions: []
+          metrics:
+            - name: AccountMaxReads
+              statistics:
+                - Maximum
+            - name: AccountMaxWrites
+              statistics:
+                - Maximum
+            - name: AccountProvisionedReadCapacityUtilization
+              statistics:
+                - Maximum
+            - name: AccountProvisionedWriteCapacityUtilization
+              statistics:
+                - Maximum
+
+# ─────────────────────────────────────────────────────────────────────────────
+# processors 섹션에 추가 (DynamoDB 전용 라벨 정리)
+# ─────────────────────────────────────────────────────────────────────────────
+processors:
+  # DynamoDB 메트릭에 통합 라벨 추가
+  attributes/dynamodb:
+    actions:
+      - key: db_engine
+        value: dynamodb
+        action: upsert
+      - key: service_type
+        value: serverless
+        action: upsert
+
+  # DynamoDB 메트릭 배치 처리
+  batch/dynamodb:
+    timeout: 60s
+    send_batch_size: 500
+
+# ─────────────────────────────────────────────────────────────────────────────
+# service.pipelines에 추가
+# ─────────────────────────────────────────────────────────────────────────────
+service:
+  pipelines:
+    # DynamoDB 전용 파이프라인 (기존 metrics 파이프라인과 별도)
+    metrics/dynamodb:
+      receivers: [awscloudwatch/dynamodb]
+      processors: [attributes/dynamodb, batch/dynamodb]
+      exporters: [prometheusremotewrite]
+
+# =============================================================================
+# 통합된 전체 ADOT Collector 설정 예시 (참조용)
+# =============================================================================
+# 기존 adot-collector-ha-dedup.yaml에 위 내용을 병합하면:
+#
+# receivers:
+#   prometheus: ...          ← 기존 (Exporter scrape)
+#   awscloudwatch/dynamodb: ... ← 신규 (DynamoDB CloudWatch)
+#
+# processors:
+#   batch: ...               ← 기존
+#   memory_limiter: ...      ← 기존
+#   attributes/dynamodb: ... ← 신규
+#   batch/dynamodb: ...      ← 신규
+#
+# exporters:
+#   prometheusremotewrite: ... ← 기존 (공유)
+#
+# service:
+#   pipelines:
+#     metrics: ...           ← 기존 (Exporter → AMP)
+#     metrics/dynamodb: ...  ← 신규 (CloudWatch → AMP)
+# =============================================================================

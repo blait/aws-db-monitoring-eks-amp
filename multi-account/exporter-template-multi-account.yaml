@@ -1,0 +1,213 @@
+# =============================================================================
+# Exporter 템플릿 — 멀티 어카운트 버전
+# =============================================================================
+#
+# 기존 Exporter 템플릿에 다음을 추가:
+# - account_id, account_name, region, vpc_id 라벨
+# - Cross-Account 인증을 위한 ServiceAccount annotation
+# - replicas: 2 (HA)
+# - podAntiAffinity (각 Pod이 다른 노드에 배치)
+#
+# 이 파일은 MySQL Exporter를 예시로 보여줍니다.
+# 다른 엔진(PG, MSSQL, Redis)도 동일 패턴입니다.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DEPLOY_NAME}
+  namespace: ${TARGET_NAMESPACE}
+  labels:
+    app: mysql-exporter
+    db-discovery/managed-by: auto-discovery
+    db-discovery/exporter-type: mysql
+    db-discovery/source-type: ${SOURCE_TYPE}
+    # 멀티 어카운트 라벨
+    db-discovery/account-id: "${ACCOUNT_ID_LABEL}"
+    db-discovery/account-name: "${ACCOUNT_NAME_LABEL}"
+    db-discovery/region: "${REGION_LABEL}"
+  annotations:
+    db-discovery/db-identifier: "${DB_IDENTIFIER}"
+    db-discovery/endpoint: "${DB_ENDPOINT}"
+    db-discovery/port: "${DB_PORT}"
+    db-discovery/engine: "mysql"
+    db-discovery/cluster-id: "${CLUSTER_ID}"
+    db-discovery/account-id: "${ACCOUNT_ID_LABEL}"
+    db-discovery/account-name: "${ACCOUNT_NAME_LABEL}"
+    db-discovery/region: "${REGION_LABEL}"
+    db-discovery/vpc-id: "${VPC_ID_LABEL}"
+    db-discovery/db-role: "${DB_ROLE_LABEL}"
+    db-discovery/created-at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+spec:
+  # HA: 각 DB 인스턴스당 2개 Pod
+  replicas: ${REPLICA_COUNT}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter
+      db-instance: ${DB_IDENTIFIER}
+      db-discovery/account-id: "${ACCOUNT_ID_LABEL}"
+  template:
+    metadata:
+      labels:
+        app: mysql-exporter
+        db-instance: ${DB_IDENTIFIER}
+        db-discovery/managed-by: auto-discovery
+        # 멀티 어카운트 라벨 (ADOT가 scrape 시 메트릭에 추가)
+        db_account_id: "${ACCOUNT_ID_LABEL}"
+        db_account_name: "${ACCOUNT_NAME_LABEL}"
+        db_region: "${REGION_LABEL}"
+        db_vpc_id: "${VPC_ID_LABEL}"
+        db_role: "${DB_ROLE_LABEL}"
+      annotations:
+        # ADOT Collector가 자동 scrape
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9104"
+        prometheus.io/path: "/metrics"
+        # 멀티 어카운트 메타데이터
+        db-discovery/account-id: "${ACCOUNT_ID_LABEL}"
+        db-discovery/account-name: "${ACCOUNT_NAME_LABEL}"
+        db-discovery/region: "${REGION_LABEL}"
+        db-discovery/vpc-id: "${VPC_ID_LABEL}"
+    spec:
+      # 빠른 종료
+      terminationGracePeriodSeconds: 5
+      # 리소스 부족 시 eviction 방지
+      priorityClassName: db-exporter-priority
+      # 노드 장애 시 빠른 재스케줄링
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 10
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 10
+      
+      # HA: 각 Pod을 다른 노드/AZ에 배치
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: db-instance
+                      operator: In
+                      values:
+                        - ${DB_IDENTIFIER}
+                topologyKey: "topology.kubernetes.io/zone"
+      
+      # Cross-Account Secrets 접근을 위한 ServiceAccount
+      serviceAccountName: db-exporter-${ACCOUNT_ID_LABEL:(-4)}
+
+      containers:
+        - name: mysqld-exporter
+          image: ${EXPORTER_IMAGE}
+          ports:
+            - containerPort: 9104
+              name: metrics
+              protocol: TCP
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "$(MYSQL_USER):$(MYSQL_PASSWORD)@tcp(${DB_ENDPOINT}:${DB_PORT})/"
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ${SECRET_NAME}
+                  key: username
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ${SECRET_NAME}
+                  key: password
+          args:
+            - "--collect.info_schema.tables"
+            - "--collect.info_schema.innodb_metrics"
+            - "--collect.info_schema.processlist"
+            - "--collect.global_status"
+            - "--collect.global_variables"
+            - "--collect.slave_status"
+            - "--collect.engine_innodb_status"
+            - "--collect.perf_schema.eventswaits"
+            - "--collect.perf_schema.file_events"
+            - "--collect.perf_schema.tableiowaits"
+            - "--collect.perf_schema.tablelocks"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          # 빠른 복구 Probe
+          startupProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            periodSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+
+---
+# Service (ADOT가 Service Discovery에도 사용)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${DEPLOY_NAME}
+  namespace: ${TARGET_NAMESPACE}
+  labels:
+    app: mysql-exporter
+    db-discovery/managed-by: auto-discovery
+    db-instance: ${DB_IDENTIFIER}
+    db-discovery/account-id: "${ACCOUNT_ID_LABEL}"
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9104"
+    db-discovery/account-id: "${ACCOUNT_ID_LABEL}"
+    db-discovery/region: "${REGION_LABEL}"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9104
+      targetPort: 9104
+      protocol: TCP
+      name: metrics
+  selector:
+    app: mysql-exporter
+    db-instance: ${DB_IDENTIFIER}
+    db-discovery/account-id: "${ACCOUNT_ID_LABEL}"
+
+---
+# PodDisruptionBudget (HA 보호)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ${DEPLOY_NAME}-pdb
+  namespace: ${TARGET_NAMESPACE}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter
+      db-instance: ${DB_IDENTIFIER}
+      db-discovery/account-id: "${ACCOUNT_ID_LABEL}"

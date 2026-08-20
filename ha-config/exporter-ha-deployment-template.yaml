@@ -1,0 +1,229 @@
+# =============================================================================
+# Exporter HA 배포 템플릿 (MySQL 기준 예시)
+# =============================================================================
+#
+# 💡 핵심 전략:
+#   - replicas: 2로 동일 DB에 대해 2개 Pod이 동시에 메트릭 수집
+#   - 각 Pod은 서로 다른 노드/AZ에 배치 (podAntiAffinity)
+#   - ADOT Collector가 둘 다 scrape → AMP Recording Rules에서 dedup
+#   - Grafana에서는 항상 하나의 라인만 표시
+#
+# 📌 Deployment vs StatefulSet 선택:
+#   - Deployment 사용 (StatefulSet 불필요)
+#   - pod 이름은 ADOT relabel에서 자동으로 라벨화됨
+#   - 별도 replica_id 라벨 불필요 (pod 라벨 자체를 사용)
+#
+# 💰 비용:
+#   - Exporter Pod 2개 운영 → EKS 비용 약간 증가 (Pod당 50m CPU, 64Mi Memory)
+#   - AMP Recording Rules에서 dedup → Grafana 쿼리 비용은 1x 유지
+# =============================================================================
+
+---
+# MySQL Exporter HA Deployment 예시
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DEPLOY_NAME}
+  namespace: ${TARGET_NAMESPACE}
+  labels:
+    app: mysql-exporter
+    db-discovery/managed-by: auto-discovery
+    db-discovery/exporter-type: mysql
+    db-discovery/source-type: ${SOURCE_TYPE}
+  annotations:
+    db-discovery/db-identifier: "${DB_IDENTIFIER}"
+    db-discovery/endpoint: "${DB_ENDPOINT}"
+    db-discovery/port: "${DB_PORT}"
+    db-discovery/engine: "mysql"
+    db-discovery/cluster-id: "${CLUSTER_ID}"
+    db-discovery/ha-enabled: "true"
+    db-discovery/created-at: "${CREATED_AT}"
+spec:
+  # HA: 2개 Pod으로 동시 수집
+  replicas: 2
+
+  # 업데이트 시에도 항상 1개 이상 유지 (메트릭 갭 방지)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app: mysql-exporter
+      db-instance: ${DB_IDENTIFIER}
+  template:
+    metadata:
+      labels:
+        app: mysql-exporter
+        db-instance: ${DB_IDENTIFIER}
+        db-discovery/managed-by: auto-discovery
+        # db_engine 라벨: ADOT에서 Recording Rule 분기에 사용
+        db-engine: mysql
+      annotations:
+        # ADOT Collector가 이 Pod을 자동으로 scrape
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9104"
+        prometheus.io/path: "/metrics"
+        # DB 메타데이터 (ADOT relabel에서 라벨로 변환)
+        db-discovery/db-identifier: "${DB_IDENTIFIER}"
+        db-discovery/endpoint: "${DB_ENDPOINT}"
+        db-discovery/engine: "mysql"
+        db-discovery/cluster-id: "${CLUSTER_ID}"
+    spec:
+      # 빠른 종료: 기본 30초 → 5초
+      terminationGracePeriodSeconds: 5
+
+      # 노드 장애 시 빠른 재스케줄링
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 10
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 10
+
+      # HA 핵심: 2개 Pod을 서로 다른 노드/AZ에 분산
+      affinity:
+        podAntiAffinity:
+          # 가능하면 다른 노드에 배치 (hard가 아닌 soft → 노드 1개일 때도 배포 가능)
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: db-instance
+                      operator: In
+                      values:
+                        - ${DB_IDENTIFIER}
+                topologyKey: kubernetes.io/hostname
+            # 가능하면 다른 AZ에 배치
+            - weight: 50
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: db-instance
+                      operator: In
+                      values:
+                        - ${DB_IDENTIFIER}
+                topologyKey: topology.kubernetes.io/zone
+
+      # Topology Spread: 가용영역 균등 분산
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              db-instance: ${DB_IDENTIFIER}
+
+      containers:
+        - name: mysqld-exporter
+          image: ${EXPORTER_IMAGE}
+          ports:
+            - containerPort: 9104
+              name: metrics
+              protocol: TCP
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "$(MYSQL_USER):$(MYSQL_PASSWORD)@tcp(${DB_ENDPOINT}:${DB_PORT})/"
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ${SECRET_NAME}
+                  key: username
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ${SECRET_NAME}
+                  key: password
+          args:
+            - "--collect.info_schema.tables"
+            - "--collect.info_schema.innodb_metrics"
+            - "--collect.info_schema.processlist"
+            - "--collect.global_status"
+            - "--collect.global_variables"
+            - "--collect.slave_status"
+            - "--collect.engine_innodb_status"
+            - "--collect.perf_schema.eventswaits"
+            - "--collect.perf_schema.file_events"
+            - "--collect.perf_schema.tableiowaits"
+            - "--collect.perf_schema.tablelocks"
+            - "--collect.auto_increment.columns"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+          # 빠른 복구: Startup → Liveness → Readiness
+          startupProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            periodSeconds: 2
+            failureThreshold: 15
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+
+---
+# Service (Headless → 각 Pod 개별 접근 가능, ADOT가 개별 scrape)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${DEPLOY_NAME}
+  namespace: ${TARGET_NAMESPACE}
+  labels:
+    app: mysql-exporter
+    db-discovery/managed-by: auto-discovery
+    db-instance: ${DB_IDENTIFIER}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9104"
+    prometheus.io/path: "/metrics"
+spec:
+  # ClusterIP: None → Headless Service
+  # ADOT가 각 Pod IP를 개별로 scrape할 수 있음
+  clusterIP: None
+  ports:
+    - port: 9104
+      targetPort: 9104
+      protocol: TCP
+      name: metrics
+  selector:
+    app: mysql-exporter
+    db-instance: ${DB_IDENTIFIER}
+
+---
+# PodDisruptionBudget: 클러스터 업그레이드 시에도 최소 1개 Pod 유지
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ${DEPLOY_NAME}-pdb
+  namespace: ${TARGET_NAMESPACE}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter
+      db-instance: ${DB_IDENTIFIER}

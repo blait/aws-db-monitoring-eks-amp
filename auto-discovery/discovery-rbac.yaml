@@ -1,0 +1,82 @@
+# =============================================================================
+# DB 자동 디스커버리 RBAC 설정
+# CronJob이 Deployment/Service를 생성/삭제할 수 있는 권한을 부여합니다.
+# =============================================================================
+
+# ServiceAccount: CronJob Pod가 사용할 서비스 계정
+# IRSA(IAM Roles for Service Accounts)를 통해 AWS API 권한도 부여됨
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: db-discovery-sa
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: rbac
+  annotations:
+    # IRSA: EKS에서 이 ServiceAccount가 AWS IAM 역할을 assume하도록 설정
+    # 아래 ARN은 deploy-all.sh 또는 Module 4에서 생성한 역할로 교체 필요
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/integrated-db-monitoring-discovery-role"
+
+---
+# ClusterRole: Exporter Deployment/Service를 관리할 수 있는 권한
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: db-discovery-role
+  labels:
+    app: db-discovery
+    component: rbac
+rules:
+  # Deployment 관리 (Exporter 생성/수정/삭제)
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Service 관리 (Exporter 엔드포인트 노출)
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # ConfigMap 관리 (디스커버리 상태 저장)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  
+  # Secret 읽기 (DB 접속 정보)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  
+  # Pod 상태 확인 (Exporter 정상 동작 확인)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding: ServiceAccount에 ClusterRole 바인딩
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: db-discovery-binding
+  labels:
+    app: db-discovery
+    component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: db-discovery-role
+subjects:
+  - kind: ServiceAccount
+    name: db-discovery-sa
+    namespace: observability
+
+---
+# (선택) Namespace 자동 생성
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app: db-monitoring
+    purpose: database-observability

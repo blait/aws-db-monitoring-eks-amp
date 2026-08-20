@@ -1,0 +1,54 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchMetricsRead",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:DescribeAlarmsForMetric"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": "AWS/DynamoDB"
+        }
+      }
+    },
+    {
+      "Sid": "CloudWatchMetricsReadNoCondition",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:GetMetricData",
+        "cloudwatch:ListMetrics"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DynamoDBDescribe",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:ListTables",
+        "dynamodb:DescribeTable",
+        "dynamodb:ListGlobalTables",
+        "dynamodb:DescribeGlobalTable",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:DescribeContinuousBackups",
+        "dynamodb:ListTagsOfResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "TagReadAccess",
+      "Effect": "Allow",
+      "Action": [
+        "tag:GetResources",
+        "tag:GetTagKeys",
+        "tag:GetTagValues"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

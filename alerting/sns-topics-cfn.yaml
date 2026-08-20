@@ -1,0 +1,425 @@
+# =============================================================================
+# SNS 알람 토픽 CloudFormation 템플릿
+# =============================================================================
+# 심각도별 3개 토픽 생성 + 구독 + KMS 암호화 + 접근 정책
+#
+# 배포 방법:
+#   aws cloudformation create-stack \
+#     --stack-name db-monitoring-alerting \
+#     --template-body file://sns-topics-cfn.yaml \
+#     --parameters \
+#       ParameterKey=EnvironmentName,ParameterValue=integrated-db-monitoring \
+#       ParameterKey=AlertEmailEndpoint,ParameterValue=dba-team@example.com \
+#       ParameterKey=CriticalEmailEndpoint,ParameterValue=oncall@example.com \
+#     --capabilities CAPABILITY_IAM
+# =============================================================================
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DB 통합 모니터링 — SNS 알람 토픽 (심각도별 라우팅)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: integrated-db-monitoring
+    Description: 환경 이름 (리소스 네이밍에 사용)
+
+  AlertEmailEndpoint:
+    Type: String
+    Default: ''
+    Description: Info/Warning 알림을 받을 이메일 주소
+
+  CriticalEmailEndpoint:
+    Type: String
+    Default: ''
+    Description: Critical 알림을 받을 이메일 주소 (온콜팀)
+
+  SlackWebhookUrl:
+    Type: String
+    Default: ''
+    Description: Slack Incoming Webhook URL (선택사항)
+    NoEcho: true
+
+  AMPWorkspaceArn:
+    Type: String
+    Default: ''
+    Description: AMP 워크스페이스 ARN (AlertManager가 SNS에 publish하도록 허용)
+
+  AMGWorkspaceRoleArn:
+    Type: String
+    Default: ''
+    Description: AMG 워크스페이스 IAM Role ARN
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmailEndpoint, '']]
+  HasCriticalEmail: !Not [!Equals [!Ref CriticalEmailEndpoint, '']]
+  HasSlackWebhook: !Not [!Equals [!Ref SlackWebhookUrl, '']]
+  HasAMPArn: !Not [!Equals [!Ref AMPWorkspaceArn, '']]
+  HasAMGArn: !Not [!Equals [!Ref AMGWorkspaceRoleArn, '']]
+
+Resources:
+  # ─────────────────────────────────────────────────────────────────
+  # KMS 키: SNS 메시지 암호화
+  # ─────────────────────────────────────────────────────────────────
+  AlertEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: DB 모니터링 알람 SNS 메시지 암호화 키
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowRootAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowSNSUse
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - kms:GenerateDataKey*
+              - kms:Decrypt
+            Resource: '*'
+          - Sid: AllowAMPUse
+            Effect: Allow
+            Principal:
+              Service: aps.amazonaws.com
+            Action:
+              - kms:GenerateDataKey*
+              - kms:Decrypt
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-alert-key'
+
+  AlertEncryptionKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${EnvironmentName}-alert-key'
+      TargetKeyId: !Ref AlertEncryptionKey
+
+  # ─────────────────────────────────────────────────────────────────
+  # SNS Topic: Info (참고 사항)
+  # ─────────────────────────────────────────────────────────────────
+  InfoTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${EnvironmentName}-alert-info'
+      DisplayName: '[INFO] DB 모니터링 알림'
+      KmsMasterKeyId: !Ref AlertEncryptionKey
+      Tags:
+        - Key: Severity
+          Value: info
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  InfoTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref InfoTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAMPPublish
+            Effect: Allow
+            Principal:
+              Service: aps.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref InfoTopic
+          - Sid: AllowAMGPublish
+            Effect: Allow
+            Principal:
+              AWS: !If [HasAMGArn, !Ref AMGWorkspaceRoleArn, !Ref 'AWS::AccountId']
+            Action: sns:Publish
+            Resource: !Ref InfoTopic
+          - Sid: AllowLambdaPublish
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref InfoTopic
+
+  InfoEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref InfoTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmailEndpoint
+
+  # ─────────────────────────────────────────────────────────────────
+  # SNS Topic: Warning (주의 필요)
+  # ─────────────────────────────────────────────────────────────────
+  WarningTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${EnvironmentName}-alert-warning'
+      DisplayName: '[WARNING] DB 모니터링 경고'
+      KmsMasterKeyId: !Ref AlertEncryptionKey
+      Tags:
+        - Key: Severity
+          Value: warning
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  WarningTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref WarningTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAMPPublish
+            Effect: Allow
+            Principal:
+              Service: aps.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref WarningTopic
+          - Sid: AllowAMGPublish
+            Effect: Allow
+            Principal:
+              AWS: !If [HasAMGArn, !Ref AMGWorkspaceRoleArn, !Ref 'AWS::AccountId']
+            Action: sns:Publish
+            Resource: !Ref WarningTopic
+
+  WarningEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref WarningTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmailEndpoint
+
+  # Slack 연동 (Lambda 경유)
+  WarningSlackSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasSlackWebhook
+    Properties:
+      TopicArn: !Ref WarningTopic
+      Protocol: lambda
+      Endpoint: !GetAtt SlackNotificationLambda.Arn
+
+  # ─────────────────────────────────────────────────────────────────
+  # SNS Topic: Critical (즉시 대응)
+  # ─────────────────────────────────────────────────────────────────
+  CriticalTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${EnvironmentName}-alert-critical'
+      DisplayName: '[CRITICAL] DB 모니터링 긴급'
+      KmsMasterKeyId: !Ref AlertEncryptionKey
+      Tags:
+        - Key: Severity
+          Value: critical
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  CriticalTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref CriticalTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAMPPublish
+            Effect: Allow
+            Principal:
+              Service: aps.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref CriticalTopic
+          - Sid: AllowAMGPublish
+            Effect: Allow
+            Principal:
+              AWS: !If [HasAMGArn, !Ref AMGWorkspaceRoleArn, !Ref 'AWS::AccountId']
+            Action: sns:Publish
+            Resource: !Ref CriticalTopic
+
+  CriticalEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasCriticalEmail
+    Properties:
+      TopicArn: !Ref CriticalTopic
+      Protocol: email
+      Endpoint: !Ref CriticalEmailEndpoint
+
+  CriticalSlackSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasSlackWebhook
+    Properties:
+      TopicArn: !Ref CriticalTopic
+      Protocol: lambda
+      Endpoint: !GetAtt SlackNotificationLambda.Arn
+
+  # ─────────────────────────────────────────────────────────────────
+  # Slack 알림 Lambda 함수
+  # ─────────────────────────────────────────────────────────────────
+  SlackNotificationLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: HasSlackWebhook
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-slack-notification-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: KMSDecrypt
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: !GetAtt AlertEncryptionKey.Arn
+
+  SlackNotificationLambda:
+    Type: AWS::Lambda::Function
+    Condition: HasSlackWebhook
+    Properties:
+      FunctionName: !Sub '${EnvironmentName}-slack-notification'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt SlackNotificationLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
+          GRAFANA_BASE_URL: ''  # AMG URL (배포 후 업데이트)
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import urllib.request
+
+          SEVERITY_CONFIG = {
+              'critical': {'color': '#FF0000', 'emoji': '🚨', 'prefix': '[CRITICAL]'},
+              'warning': {'color': '#FFA500', 'emoji': '⚠️', 'prefix': '[WARNING]'},
+              'info': {'color': '#36A2EB', 'emoji': 'ℹ️', 'prefix': '[INFO]'},
+          }
+
+          def handler(event, context):
+              webhook_url = os.environ['SLACK_WEBHOOK_URL']
+              grafana_url = os.environ.get('GRAFANA_BASE_URL', '')
+              
+              for record in event['Records']:
+                  message = json.loads(record['Sns']['Message'])
+                  subject = record['Sns'].get('Subject', 'DB 모니터링 알림')
+                  
+                  # AMP AlertManager 형식 파싱
+                  alerts = message.get('alerts', [message])
+                  
+                  for alert in alerts:
+                      severity = alert.get('labels', {}).get('severity', 'info')
+                      config = SEVERITY_CONFIG.get(severity, SEVERITY_CONFIG['info'])
+                      
+                      db_instance = alert.get('labels', {}).get('db_instance', 'unknown')
+                      account_id = alert.get('labels', {}).get('account_id', '')
+                      region = alert.get('labels', {}).get('region', '')
+                      alert_name = alert.get('labels', {}).get('alertname', subject)
+                      summary = alert.get('annotations', {}).get('summary', '')
+                      description = alert.get('annotations', {}).get('description', '')
+                      
+                      # Slack Block Kit 메시지
+                      blocks = [
+                          {
+                              "type": "header",
+                              "text": {
+                                  "type": "plain_text",
+                                  "text": f"{config['emoji']} {config['prefix']} {alert_name}"
+                              }
+                          },
+                          {
+                              "type": "section",
+                              "fields": [
+                                  {"type": "mrkdwn", "text": f"*DB 인스턴스:*\n{db_instance}"},
+                                  {"type": "mrkdwn", "text": f"*심각도:*\n{severity.upper()}"},
+                                  {"type": "mrkdwn", "text": f"*계정:*\n{account_id or 'N/A'}"},
+                                  {"type": "mrkdwn", "text": f"*리전:*\n{region or 'N/A'}"},
+                              ]
+                          },
+                          {
+                              "type": "section",
+                              "text": {
+                                  "type": "mrkdwn",
+                                  "text": f"*요약:* {summary}\n\n{description}"
+                              }
+                          }
+                      ]
+                      
+                      if grafana_url:
+                          blocks.append({
+                              "type": "actions",
+                              "elements": [{
+                                  "type": "button",
+                                  "text": {"type": "plain_text", "text": "📊 대시보드 열기"},
+                                  "url": f"{grafana_url}/d/db-overview"
+                              }]
+                          })
+                      
+                      payload = {
+                          "attachments": [{
+                              "color": config['color'],
+                              "blocks": blocks
+                          }]
+                      }
+                      
+                      req = urllib.request.Request(
+                          webhook_url,
+                          data=json.dumps(payload).encode('utf-8'),
+                          headers={'Content-Type': 'application/json'}
+                      )
+                      urllib.request.urlopen(req)
+              
+              return {'statusCode': 200}
+
+  # Lambda에 SNS 호출 권한 부여
+  SlackLambdaWarningPermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasSlackWebhook
+    Properties:
+      FunctionName: !Ref SlackNotificationLambda
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref WarningTopic
+
+  SlackLambdaCriticalPermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasSlackWebhook
+    Properties:
+      FunctionName: !Ref SlackNotificationLambda
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref CriticalTopic
+
+Outputs:
+  InfoTopicArn:
+    Description: Info 알림 SNS Topic ARN
+    Value: !Ref InfoTopic
+    Export:
+      Name: !Sub '${EnvironmentName}-alert-info-arn'
+
+  WarningTopicArn:
+    Description: Warning 알림 SNS Topic ARN
+    Value: !Ref WarningTopic
+    Export:
+      Name: !Sub '${EnvironmentName}-alert-warning-arn'
+
+  CriticalTopicArn:
+    Description: Critical 알림 SNS Topic ARN
+    Value: !Ref CriticalTopic
+    Export:
+      Name: !Sub '${EnvironmentName}-alert-critical-arn'
+
+  KMSKeyArn:
+    Description: 알람 암호화 KMS 키 ARN
+    Value: !GetAtt AlertEncryptionKey.Arn

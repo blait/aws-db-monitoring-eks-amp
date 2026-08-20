@@ -1,0 +1,90 @@
+# =============================================================================
+# Exporter HA(고가용성) 패치 — 비용 최소화 버전
+# =============================================================================
+# 
+# 💡 전략: replicas: 2 대신 "빠른 복구 + 메트릭 갭 최소화" 접근
+#
+# [비용 비교]
+# ┌─────────────────────────────────────┬──────────────────┬─────────────────┐
+# │ 방식                                │ EKS Pod 비용     │ AMP 저장 비용   │
+# ├─────────────────────────────────────┼──────────────────┼─────────────────┤
+# │ replicas: 1 (현재)                  │ 1x               │ 1x              │
+# │ replicas: 2 + AMP dedup            │ 2x               │ 1.5~2x          │
+# │ replicas: 1 + 빠른복구 (권장) ⭐    │ 1x               │ 1x              │
+# └─────────────────────────────────────┴──────────────────┴─────────────────┘
+#
+# ⭐ 권장 방식: "replicas: 1 + 빠른 자동 복구" — 비용 동일, 갭 5~15초 이내
+#
+# 구현 방법:
+# 1. Liveness/Readiness Probe 강화 → 문제 Pod 빠르게 감지 (5초 이내)
+# 2. PodDisruptionBudget → 클러스터 업그레이드 시에도 exporter 보호
+# 3. Priority Class → 리소스 부족 시 exporter Pod이 먼저 eviction되지 않도록
+# 4. Topology Spread → 가용영역 분산 (ADOT Collector는 replicas:2)
+# 5. ADOT Collector replicas: 2 → Collector 자체 HA (exporter는 1개로 충분)
+#
+# =============================================================================
+
+---
+# PriorityClass: Exporter Pod이 노드 압박 시 eviction 되지 않도록
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: db-exporter-priority
+value: 100000
+globalDefault: false
+description: "DB Exporter Pod 보호 — 일반 워크로드보다 높은 우선순위"
+
+---
+# PodDisruptionBudget: 클러스터 업그레이드/노드 드레인 시 exporter 보호
+# 각 exporter type별로 하나씩 적용
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mysql-exporter-pdb
+  namespace: observability
+spec:
+  # maxUnavailable: 1 → 전체 MySQL Exporter 중 동시에 1개만 내려갈 수 있음
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter
+      db-discovery/managed-by: auto-discovery
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgresql-exporter-pdb
+  namespace: observability
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: postgresql-exporter
+      db-discovery/managed-by: auto-discovery
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mssql-exporter-pdb
+  namespace: observability
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: mssql-exporter
+      db-discovery/managed-by: auto-discovery
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-exporter-pdb
+  namespace: observability
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+      db-discovery/managed-by: auto-discovery

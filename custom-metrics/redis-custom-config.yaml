@@ -1,0 +1,81 @@
+# =============================================================================
+# Redis/Valkey 커스텀 메트릭 설정
+# =============================================================================
+# redis_exporter의 환경변수 + Lua 스크립트로 커스텀 메트릭 수집
+#
+# 사용법:
+#   redis_exporter \
+#     --redis.addr=<endpoint>:6379 \
+#     --script=/etc/redis-exporter/scripts/custom-metrics.lua \
+#     --check-keys="session:*,cache:*,queue:*" \
+#     --check-single-keys="slowlog_length"
+#
+# 주요 메커니즘:
+#   1. --check-keys: 키 패턴별 존재 수 + 메모리 사용량
+#   2. --check-single-keys: 특정 키 값 모니터링
+#   3. --script: Lua 스크립트로 복잡한 수집 로직
+#   4. --include-system-metrics: CLUSTER INFO, SLOWLOG 등
+#
+# ⚠️ ElastiCache 참고:
+#   - AUTH 토큰 필요 (--redis.password 또는 환경변수)
+#   - TLS 필요 (--tls, --tls-skip-verify 옵션)
+#   - CLUSTER 명령은 클러스터 모드에서만 사용 가능
+#   - KEYS 명령 사용 불가 → SCAN 기반 (redis_exporter 기본 동작)
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Exporter 환경변수 설정
+# Deployment에서 env로 주입
+# ─────────────────────────────────────────────────────────────────────────────
+exporter_env:
+  # 키 패턴별 모니터링 (SCAN 기반, 안전)
+  REDIS_EXPORTER_CHECK_KEYS: "session:*,cache:*,queue:*,lock:*,rate_limit:*"
+  
+  # 단일 키 모니터링
+  REDIS_EXPORTER_CHECK_SINGLE_KEYS: ""
+  
+  # Lua 스크립트 경로
+  REDIS_EXPORTER_SCRIPT: "/etc/redis-exporter/scripts/custom-metrics.lua"
+  
+  # TLS 설정 (ElastiCache 필수)
+  REDIS_EXPORTER_TLS: "true"
+  REDIS_EXPORTER_TLS_SKIP_VERIFY: "true"
+  REDIS_EXPORTER_SKIP_TLS_VERIFICATION: "true"
+  
+  # 추가 메트릭 활성화
+  REDIS_EXPORTER_INCL_SYSTEM_METRICS: "true"
+  REDIS_EXPORTER_IS_CLUSTER: "false"  # Replication Group이면 false, Cluster 모드면 true
+  
+  # Slow Log 엔트리 수
+  REDIS_EXPORTER_LUA_SCRIPT_MAX_KEYS: "100"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Exporter CLI 옵션
+# Deployment의 args에 추가
+# ─────────────────────────────────────────────────────────────────────────────
+exporter_args:
+  - "--check-keys=session:*,cache:*,queue:*,lock:*,rate_limit:*"
+  - "--check-key-groups=session:*,cache:*,queue:*,lock:*,rate_limit:*"
+  - "--script=/etc/redis-exporter/scripts/custom-metrics.lua"
+  - "--include-system-metrics"
+  - "--connection-timeout=5s"
+  - "--tls"
+  - "--tls-skip-verify"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 수집되는 커스텀 메트릭 목록
+# ─────────────────────────────────────────────────────────────────────────────
+# 
+# [--check-keys 로 수집되는 메트릭]
+# redis_key_size{db="db0",key="session:*"}     — 패턴에 매칭된 키 수
+# redis_key_value{db="db0",key="session:*"}    — 키 값 (숫자인 경우)
+#
+# [Lua 스크립트로 수집되는 메트릭]
+# redis_custom_slowlog_length                  — Slow Log 엔트리 수
+# redis_custom_slowlog_latest_duration_us      — 최근 Slow Log 실행 시간
+# redis_custom_memory_by_pattern_bytes         — 패턴별 메모리 추정
+# redis_custom_cluster_slots_ok                — 정상 슬롯 수
+# redis_custom_cluster_slots_fail              — 장애 슬롯 수
+# redis_custom_cluster_known_nodes             — 알려진 노드 수
+# redis_custom_keyspace_expires_ratio          — TTL 설정된 키 비율
+# redis_custom_big_keys_count                  — 대형 키 수 (1MB 이상)

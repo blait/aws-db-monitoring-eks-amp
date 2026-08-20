@@ -1,0 +1,223 @@
+# =============================================================================
+# Exporter 템플릿 — 커스텀 메트릭 ConfigMap 마운트 예시 (MySQL 기준)
+# =============================================================================
+# 기존 Exporter 템플릿에 커스텀 쿼리 ConfigMap을 추가하는 방법을 보여줍니다.
+# 다른 Exporter (PostgreSQL, MSSQL, Redis)도 동일 패턴으로 적용합니다.
+#
+# 핵심 변경점:
+# 1. volumes에 ConfigMap 추가
+# 2. volumeMounts로 컨테이너에 마운트
+# 3. args에 커스텀 쿼리 경로 지정
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DEPLOY_NAME}
+  namespace: ${TARGET_NAMESPACE}
+  labels:
+    app: mysql-exporter
+    db-discovery/managed-by: auto-discovery
+    db-discovery/exporter-type: mysql
+    db-discovery/source-type: ${SOURCE_TYPE}
+  annotations:
+    db-discovery/db-identifier: "${DB_IDENTIFIER}"
+    db-discovery/endpoint: "${DB_ENDPOINT}"
+    db-discovery/engine: "mysql"
+spec:
+  replicas: 2  # HA: Active-Active
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: mysql-exporter
+      db-instance: ${DB_IDENTIFIER}
+  template:
+    metadata:
+      labels:
+        app: mysql-exporter
+        db-instance: ${DB_IDENTIFIER}
+        db-discovery/managed-by: auto-discovery
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9104"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 5
+      priorityClassName: db-exporter-priority
+      # HA: Pod이 서로 다른 노드/AZ에 배치
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: mysql-exporter
+                    db-instance: ${DB_IDENTIFIER}
+                topologyKey: topology.kubernetes.io/zone
+      
+      # ──────────────────────────────────────────────────────────────
+      # ⭐ 커스텀 메트릭: ConfigMap을 Volume으로 정의
+      # ──────────────────────────────────────────────────────────────
+      volumes:
+        - name: custom-queries
+          configMap:
+            name: mysql-custom-queries
+            items:
+              # HR (High Resolution) 쿼리 — 매 scrape마다 실행
+              - key: adaptive_hash.yaml
+                path: hr/adaptive_hash.yaml
+              - key: redo_log.yaml
+                path: hr/redo_log.yaml
+              - key: lock_waits.yaml
+                path: hr/lock_waits.yaml
+              # LR (Low Resolution) 쿼리 — 1시간마다 실행
+              - key: buffer_pool_pages.yaml
+                path: lr/buffer_pool_pages.yaml
+      
+      containers:
+        - name: mysqld-exporter
+          image: ${EXPORTER_IMAGE}
+          ports:
+            - containerPort: 9104
+              name: metrics
+              protocol: TCP
+          
+          # ──────────────────────────────────────────────────────────
+          # ⭐ 커스텀 메트릭: 수집 옵션 추가
+          # ──────────────────────────────────────────────────────────
+          args:
+            # 기본 수집 옵션
+            - "--collect.info_schema.tables"
+            - "--collect.info_schema.innodb_metrics"
+            - "--collect.info_schema.processlist"
+            - "--collect.global_status"
+            - "--collect.global_variables"
+            - "--collect.slave_status"
+            - "--collect.engine_innodb_status"
+            - "--collect.perf_schema.eventswaits"
+            - "--collect.perf_schema.file_events"
+            - "--collect.perf_schema.tableiowaits"
+            - "--collect.perf_schema.tablelocks"
+            # ⭐ 커스텀 쿼리 활성화 (경로 지정)
+            - "--collect.custom_query.hr"
+            - "--collect.custom_query.hr.directory=/etc/mysql-exporter/custom-queries/hr"
+            - "--collect.custom_query.lr"
+            - "--collect.custom_query.lr.directory=/etc/mysql-exporter/custom-queries/lr"
+          
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "$(MYSQL_USER):$(MYSQL_PASSWORD)@tcp(${DB_ENDPOINT}:${DB_PORT})/"
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ${SECRET_NAME}
+                  key: username
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ${SECRET_NAME}
+                  key: password
+          
+          # ──────────────────────────────────────────────────────────
+          # ⭐ 커스텀 메트릭: ConfigMap 마운트
+          # ──────────────────────────────────────────────────────────
+          volumeMounts:
+            - name: custom-queries
+              mountPath: /etc/mysql-exporter/custom-queries
+              readOnly: true
+          
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          
+          startupProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            periodSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9104
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 1
+
+---
+# =============================================================================
+# PostgreSQL Exporter — 커스텀 쿼리 마운트 패턴
+# =============================================================================
+# 동일한 패턴으로 PostgreSQL에 적용:
+#
+# volumes:
+#   - name: custom-queries
+#     configMap:
+#       name: postgresql-custom-queries
+#       items:
+#         - key: queries.yaml
+#           path: queries.yaml
+#
+# containers:
+#   - args:
+#       - "--extend.query-path=/etc/postgres-exporter/queries.yaml"
+#     volumeMounts:
+#       - name: custom-queries
+#         mountPath: /etc/postgres-exporter
+#         readOnly: true
+
+# =============================================================================
+# MSSQL Exporter — 커스텀 Collector 마운트 패턴
+# =============================================================================
+# volumes:
+#   - name: custom-collectors
+#     configMap:
+#       name: mssql-custom-queries
+#       items:
+#         - key: custom-collectors.yaml
+#           path: custom-collectors.yaml
+#
+# containers:
+#   - args:
+#       - "--config.file=/etc/sql-exporter/config.yaml"
+#     volumeMounts:
+#       - name: custom-collectors
+#         mountPath: /etc/sql-exporter/collectors
+#         readOnly: true
+
+# =============================================================================
+# Redis Exporter — 커스텀 Lua 스크립트 마운트 패턴
+# =============================================================================
+# volumes:
+#   - name: custom-scripts
+#     configMap:
+#       name: redis-custom-scripts
+#       items:
+#         - key: custom-metrics.lua
+#           path: custom-metrics.lua
+#
+# containers:
+#   - args:
+#       - "--script=/etc/redis-exporter/scripts/custom-metrics.lua"
+#       - "--check-keys=session:*,cache:*,queue:*,lock:*,rate_limit:*"
+#     volumeMounts:
+#       - name: custom-scripts
+#         mountPath: /etc/redis-exporter/scripts
+#         readOnly: true

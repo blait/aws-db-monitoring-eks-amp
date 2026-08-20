@@ -1,0 +1,101 @@
+{
+  "_comment": "AMG Contact Points + Notification Policy 설정 (Grafana Provisioning 형식)",
+  "_description": "이 파일을 AMG의 Alerting → Contact Points에서 Import하거나, Grafana Provisioning API로 적용합니다.",
+  "_apply_method": "curl -X POST -H 'Authorization: Bearer $GRAFANA_API_KEY' -H 'Content-Type: application/json' -d @grafana-alert-contact-points.json $GRAFANA_URL/api/v1/provisioning/contact-points",
+
+  "contact_points": [
+    {
+      "name": "SNS-Info",
+      "type": "sns",
+      "settings": {
+        "topic": "${SNS_INFO_TOPIC_ARN}",
+        "authProvider": "default",
+        "subject": "[INFO] {{ .CommonLabels.alertname }} - {{ .CommonLabels.db_instance }}",
+        "body": "📋 DB 모니터링 알림\n\n알림: {{ .CommonLabels.alertname }}\nDB: {{ .CommonLabels.db_instance }}\n엔진: {{ .CommonLabels.db_engine }}\n계정: {{ .CommonLabels.account_id }}\n리전: {{ .CommonLabels.region }}\n\n{{ range .Alerts }}\n• {{ .Annotations.summary }}\n  {{ .Annotations.description }}\n{{ end }}"
+      },
+      "disableResolveMessage": false
+    },
+    {
+      "name": "SNS-Warning",
+      "type": "sns",
+      "settings": {
+        "topic": "${SNS_WARNING_TOPIC_ARN}",
+        "authProvider": "default",
+        "subject": "⚠️ [WARNING] {{ .CommonLabels.alertname }} - {{ .CommonLabels.db_instance }}",
+        "body": "⚠️ DB 모니터링 경고\n\n알림: {{ .CommonLabels.alertname }}\nDB: {{ .CommonLabels.db_instance }}\n엔진: {{ .CommonLabels.db_engine }}\n계정: {{ .CommonLabels.account_id }}\n리전: {{ .CommonLabels.region }}\n심각도: WARNING\n\n{{ range .Alerts }}\n━━━━━━━━━━━━━━━━━━━━\n요약: {{ .Annotations.summary }}\n상세: {{ .Annotations.description }}\n현재값: {{ .Annotations.current_value }}\n임계값: {{ .Annotations.threshold }}\n━━━━━━━━━━━━━━━━━━━━\n{{ end }}\n\n📊 대시보드: {{ .ExternalURL }}"
+      },
+      "disableResolveMessage": false
+    },
+    {
+      "name": "SNS-Critical",
+      "type": "sns",
+      "settings": {
+        "topic": "${SNS_CRITICAL_TOPIC_ARN}",
+        "authProvider": "default",
+        "subject": "🚨 [CRITICAL] {{ .CommonLabels.alertname }} - {{ .CommonLabels.db_instance }}",
+        "body": "🚨 긴급 알림 — 즉시 대응 필요!\n\n╔══════════════════════════════════════╗\n║ {{ .CommonLabels.alertname }}\n╚══════════════════════════════════════╝\n\nDB: {{ .CommonLabels.db_instance }}\n엔진: {{ .CommonLabels.db_engine }}\n계정: {{ .CommonLabels.account_id }}\n리전: {{ .CommonLabels.region }}\n\n{{ range .Alerts }}\n┌─ 상세 ──────────────────────────\n│ 요약: {{ .Annotations.summary }}\n│ 상세: {{ .Annotations.description }}\n│ 현재값: {{ .Annotations.current_value }}\n│ 임계값: {{ .Annotations.threshold }}\n└─────────────────────────────────\n{{ end }}\n\n즉시 확인하세요!\n📊 대시보드: {{ .ExternalURL }}"
+      },
+      "disableResolveMessage": false
+    }
+  ],
+
+  "notification_policy": {
+    "receiver": "SNS-Warning",
+    "group_by": ["alertname", "db_instance", "account_id"],
+    "group_wait": "30s",
+    "group_interval": "5m",
+    "repeat_interval": "4h",
+    "routes": [
+      {
+        "receiver": "SNS-Critical",
+        "matchers": ["severity=critical"],
+        "group_wait": "10s",
+        "repeat_interval": "1h",
+        "continue": false
+      },
+      {
+        "receiver": "SNS-Warning",
+        "matchers": ["severity=warning"],
+        "group_wait": "30s",
+        "repeat_interval": "4h",
+        "continue": false
+      },
+      {
+        "receiver": "SNS-Info",
+        "matchers": ["severity=info"],
+        "group_wait": "60s",
+        "repeat_interval": "12h",
+        "continue": false
+      }
+    ]
+  },
+
+  "mute_timings": [
+    {
+      "name": "maintenance-window",
+      "_comment": "정기 점검 시간대 (매주 일요일 02:00~06:00 KST) 동안 알림 음소거",
+      "time_intervals": [
+        {
+          "weekdays": ["sunday"],
+          "times": [
+            {"start_time": "17:00", "end_time": "21:00"}
+          ],
+          "_note": "UTC 기준 (KST 02:00~06:00 = UTC 17:00~21:00 토요일)"
+        }
+      ]
+    }
+  ],
+
+  "silence_examples": [
+    {
+      "_comment": "예시: 특정 인스턴스 점검 시 해당 인스턴스 알림만 음소거",
+      "matchers": [
+        {"name": "db_instance", "value": "aurora-mysql-instance-1", "isRegex": false}
+      ],
+      "startsAt": "2026-08-20T18:00:00Z",
+      "endsAt": "2026-08-20T22:00:00Z",
+      "createdBy": "dba-team",
+      "comment": "Aurora MySQL 인스턴스 정기 점검"
+    }
+  ]
+}

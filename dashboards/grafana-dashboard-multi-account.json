@@ -1,0 +1,315 @@
+{
+  "__comment": "멀티 어카운트/리전 통합 DB 모니터링 대시보드",
+  "annotations": {
+    "list": []
+  },
+  "description": "멀티 어카운트/리전 AWS DB 통합 모니터링 대시보드. 계정별/리전별 필터링 지원.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "📊 환경 Overview",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "collapsed": false
+    },
+    {
+      "title": "모니터링 대상 DB 수 (계정별)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1},
+      "targets": [
+        {
+          "expr": "count(db:exporter_up:by_instance{account_id=~\"$account_id\"}) by (account_name)",
+          "legendFormat": "{{account_name}}"
+        }
+      ],
+      "options": {"colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "title": "리전별 DB 분포",
+      "type": "piechart",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1},
+      "targets": [
+        {
+          "expr": "count(db:exporter_up:by_instance{account_id=~\"$account_id\"}) by (region)",
+          "legendFormat": "{{region}}"
+        }
+      ]
+    },
+    {
+      "title": "엔진별 DB 수",
+      "type": "bargauge",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1},
+      "targets": [
+        {
+          "expr": "count(db:exporter_up:by_instance{account_id=~\"$account_id\"}) by (db_engine)",
+          "legendFormat": "{{db_engine}}"
+        }
+      ]
+    },
+    {
+      "title": "Exporter 헬스 (Down 수)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1},
+      "targets": [
+        {
+          "expr": "count(db:exporter_up:by_instance{account_id=~\"$account_id\"} == 0)",
+          "legendFormat": "Down"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {"color": "green", "value": 0},
+              {"color": "red", "value": 1}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "🔍 전체 DB 헬스 테이블",
+      "type": "table",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 5},
+      "targets": [
+        {
+          "expr": "db:exporter_up:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_engine=~\"$db_engine\"}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "account_name": "계정",
+              "region": "리전",
+              "db_engine": "엔진",
+              "db_instance": "DB 인스턴스",
+              "db_role": "역할",
+              "Value": "상태"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "title": "🐬 MySQL (Aurora + RDS)",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 13},
+      "collapsed": false
+    },
+    {
+      "title": "MySQL 연결 수",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 14},
+      "targets": [
+        {
+          "expr": "db:mysql_connections:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}} ({{region}})"
+        }
+      ]
+    },
+    {
+      "title": "MySQL QPS",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 14},
+      "targets": [
+        {
+          "expr": "db:mysql_qps:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}}"
+        }
+      ]
+    },
+    {
+      "title": "MySQL Slow Queries",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 20},
+      "targets": [
+        {
+          "expr": "db:mysql_slow_queries_rate:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}}"
+        }
+      ]
+    },
+    {
+      "title": "MySQL Buffer Pool Hit Ratio",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 20},
+      "targets": [
+        {
+          "expr": "db:mysql_buffer_pool_hit_ratio:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}}
+    },
+    {
+      "title": "🐘 PostgreSQL (Aurora + RDS)",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 26},
+      "collapsed": false
+    },
+    {
+      "title": "PostgreSQL 연결 수",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 27},
+      "targets": [
+        {
+          "expr": "db:pg_connections:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}} ({{region}})"
+        }
+      ]
+    },
+    {
+      "title": "PostgreSQL TPS",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 27},
+      "targets": [
+        {
+          "expr": "db:pg_tps:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}}"
+        }
+      ]
+    },
+    {
+      "title": "PostgreSQL Cache Hit Ratio",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 33},
+      "targets": [
+        {
+          "expr": "db:pg_cache_hit_ratio:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit"}}
+    },
+    {
+      "title": "PostgreSQL Replication Lag",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 33},
+      "targets": [
+        {
+          "expr": "db:pg_replication_lag_bytes:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "bytes"}}
+    },
+    {
+      "title": "🔴 Redis / Valkey (ElastiCache)",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 39},
+      "collapsed": false
+    },
+    {
+      "title": "Redis 연결 클라이언트",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 40},
+      "targets": [
+        {
+          "expr": "db:redis_connected_clients:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}}"
+        }
+      ]
+    },
+    {
+      "title": "Redis Hit Ratio",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 40},
+      "targets": [
+        {
+          "expr": "db:redis_hit_ratio:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_instance=~\"$db_instance\"}",
+          "legendFormat": "[{{account_name}}] {{db_instance}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit"}}
+    },
+    {
+      "title": "📦 DynamoDB",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 46},
+      "collapsed": false
+    },
+    {
+      "title": "DynamoDB RCU/WCU 사용량",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 47},
+      "targets": [
+        {
+          "expr": "db:dynamodb_consumed_rcu:by_table{account_id=~\"$account_id\", region=~\"$region\"}",
+          "legendFormat": "[{{account_name}}] {{table_name}} RCU"
+        },
+        {
+          "expr": "db:dynamodb_consumed_wcu:by_table{account_id=~\"$account_id\", region=~\"$region\"}",
+          "legendFormat": "[{{account_name}}] {{table_name}} WCU"
+        }
+      ]
+    },
+    {
+      "title": "DynamoDB Throttle Events",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 47},
+      "targets": [
+        {
+          "expr": "db:dynamodb_throttle_rate:by_table{account_id=~\"$account_id\", region=~\"$region\"}",
+          "legendFormat": "[{{account_name}}] {{table_name}}"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["db-monitoring", "multi-account", "aws"],
+  "templating": {
+    "list": [
+      {
+        "name": "account_id",
+        "type": "query",
+        "query": "label_values(db:exporter_up:by_instance, account_id)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "계정 ID"
+      },
+      {
+        "name": "region",
+        "type": "query",
+        "query": "label_values(db:exporter_up:by_instance{account_id=~\"$account_id\"}, region)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "리전"
+      },
+      {
+        "name": "db_engine",
+        "type": "query",
+        "query": "label_values(db:exporter_up:by_instance{account_id=~\"$account_id\", region=~\"$region\"}, db_engine)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "DB 엔진"
+      },
+      {
+        "name": "db_instance",
+        "type": "query",
+        "query": "label_values(db:exporter_up:by_instance{account_id=~\"$account_id\", region=~\"$region\", db_engine=~\"$db_engine\"}, db_instance)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "DB 인스턴스"
+      }
+    ]
+  },
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "Asia/Seoul",
+  "title": "AWS DB 통합 모니터링 (멀티 어카운트)",
+  "uid": "db-monitoring-multi-account",
+  "version": 1
+}

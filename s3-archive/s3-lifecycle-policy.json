@@ -1,0 +1,51 @@
+{
+  "_comment": "S3 Lifecycle Policy — AMP 메트릭 아카이브 비용 최적화",
+  "_cost_analysis": {
+    "description": "DB 10개, 메트릭 50개, 1분 간격 기준 월별 비용 추정",
+    "daily_data_size_mb": 50,
+    "monthly_data_size_gb": 1.5,
+    "s3_standard_0_90days": "$0.035/월 (1.5GB × $0.023/GB)",
+    "glacier_instant_90_365days": "$0.006/월 (1.5GB × $0.004/GB)",
+    "glacier_deep_archive_365plus": "$0.0015/월 (1.5GB × $0.00099/GB)",
+    "total_1year_storage_cost": "약 $0.50/월 (1년치 누적 데이터)",
+    "vs_amp_only": "AMP 150일 이후 데이터 유실 vs S3 5년 보관"
+  },
+  "Rules": [
+    {
+      "ID": "MetricsArchiveLifecycle",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "metrics/"
+      },
+      "Transitions": [
+        {
+          "_comment": "0~90일: S3 Standard — 즉시 조회 가능 (Athena 직접 쿼리)",
+          "Days": 90,
+          "StorageClass": "GLACIER_IR"
+        },
+        {
+          "_comment": "90~365일: Glacier Instant Retrieval — 밀리초 단위 조회 가능, 비용 82% 절감",
+          "Days": 365,
+          "StorageClass": "DEEP_ARCHIVE"
+        }
+      ],
+      "Expiration": {
+        "_comment": "5년 후 자동 삭제",
+        "Days": 1825
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 30
+      }
+    },
+    {
+      "ID": "CleanupIncompleteUploads",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": ""
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}

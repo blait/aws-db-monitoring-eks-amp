@@ -1,0 +1,387 @@
+# =============================================================================
+# PostgreSQL (Aurora PostgreSQL) 커스텀 쿼리 설정
+# =============================================================================
+# postgres_exporter의 --extend.query-path 옵션으로 사용
+#
+# 사용법:
+#   postgres_exporter --extend.query-path=/etc/postgres-exporter/custom-queries.yaml
+#
+# 형식 설명:
+#   metric_name:
+#     query: "SQL 쿼리"
+#     master: true|false (Writer에서만 실행 여부)
+#     metrics:
+#       - column_name:
+#           usage: "COUNTER|GAUGE|LABEL"
+#           description: "설명"
+#
+# ⚠️ 참고: Aurora PostgreSQL은 일부 시스템 뷰에 제한이 있을 수 있음
+#          pg_stat_io는 PostgreSQL 16+ / Aurora PostgreSQL 16+ 에서만 지원
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# pg_stat_slru: Simple LRU 캐시 상태
+# CLOG, Subtrans, MultiXact 등 내부 캐시의 적중률 확인
+# 적중률이 낮으면 shared_buffers 또는 관련 파라미터 조정 필요
+# ─────────────────────────────────────────────────────────────────────────────
+pg_stat_slru:
+  query: |
+    SELECT 
+      name,
+      blks_zeroed,
+      blks_hit,
+      blks_read,
+      blks_written,
+      blks_exists,
+      flushes,
+      truncates,
+      CASE WHEN (blks_hit + blks_read) > 0 
+        THEN round(blks_hit::numeric / (blks_hit + blks_read), 4)
+        ELSE 1.0 
+      END AS hit_ratio
+    FROM pg_stat_slru
+  metrics:
+    - name:
+        usage: "LABEL"
+        description: "SLRU 캐시 이름 (CommitTs, MultiXactMember, MultiXactOffset, Notify, Serial, Subtrans, Xact)"
+    - blks_zeroed:
+        usage: "COUNTER"
+        description: "0으로 초기화된 블록 수"
+    - blks_hit:
+        usage: "COUNTER"
+        description: "캐시 히트 블록 수"
+    - blks_read:
+        usage: "COUNTER"
+        description: "디스크에서 읽은 블록 수"
+    - blks_written:
+        usage: "COUNTER"
+        description: "디스크에 쓴 블록 수"
+    - blks_exists:
+        usage: "COUNTER"
+        description: "존재 확인된 블록 수"
+    - flushes:
+        usage: "COUNTER"
+        description: "플러시 횟수"
+    - truncates:
+        usage: "COUNTER"
+        description: "Truncate 횟수"
+    - hit_ratio:
+        usage: "GAUGE"
+        description: "캐시 적중률 (0~1)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# pg_stat_io: I/O 통계 (PostgreSQL 16+ / Aurora PostgreSQL 16+)
+# 백엔드 유형별, 오브젝트별 I/O 패턴 분석
+# ─────────────────────────────────────────────────────────────────────────────
+pg_stat_io:
+  query: |
+    SELECT 
+      backend_type,
+      object,
+      context,
+      COALESCE(reads, 0) AS reads,
+      COALESCE(read_time, 0) AS read_time_ms,
+      COALESCE(writes, 0) AS writes,
+      COALESCE(write_time, 0) AS write_time_ms,
+      COALESCE(writebacks, 0) AS writebacks,
+      COALESCE(writeback_time, 0) AS writeback_time_ms,
+      COALESCE(extends, 0) AS extends,
+      COALESCE(extend_time, 0) AS extend_time_ms,
+      COALESCE(hits, 0) AS hits,
+      COALESCE(evictions, 0) AS evictions,
+      COALESCE(reuses, 0) AS reuses
+    FROM pg_stat_io
+    WHERE reads > 0 OR writes > 0 OR hits > 0
+  master: true
+  metrics:
+    - backend_type:
+        usage: "LABEL"
+        description: "백엔드 유형 (client backend, autovacuum worker, checkpointer, etc.)"
+    - object:
+        usage: "LABEL"
+        description: "오브젝트 유형 (relation, temp relation)"
+    - context:
+        usage: "LABEL"
+        description: "I/O 컨텍스트 (normal, vacuum, bulkread, bulkwrite)"
+    - reads:
+        usage: "COUNTER"
+        description: "읽기 작업 수"
+    - read_time_ms:
+        usage: "COUNTER"
+        description: "총 읽기 시간 (ms)"
+    - writes:
+        usage: "COUNTER"
+        description: "쓰기 작업 수"
+    - write_time_ms:
+        usage: "COUNTER"
+        description: "총 쓰기 시간 (ms)"
+    - writebacks:
+        usage: "COUNTER"
+        description: "Writeback 작업 수"
+    - writeback_time_ms:
+        usage: "COUNTER"
+        description: "총 Writeback 시간 (ms)"
+    - extends:
+        usage: "COUNTER"
+        description: "파일 확장 작업 수"
+    - extend_time_ms:
+        usage: "COUNTER"
+        description: "총 파일 확장 시간 (ms)"
+    - hits:
+        usage: "COUNTER"
+        description: "shared buffer 히트 수"
+    - evictions:
+        usage: "COUNTER"
+        description: "버퍼 교체(eviction) 수"
+    - reuses:
+        usage: "COUNTER"
+        description: "버퍼 재사용 수"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# pg_stat_wal: WAL 통계
+# WAL 생성률과 sync 시간은 복제 지연 및 디스크 부하 분석에 핵심
+# ─────────────────────────────────────────────────────────────────────────────
+pg_stat_wal:
+  query: |
+    SELECT 
+      wal_records,
+      wal_fpi,
+      wal_bytes,
+      wal_buffers_full,
+      wal_write,
+      wal_sync,
+      wal_write_time AS wal_write_time_ms,
+      wal_sync_time AS wal_sync_time_ms,
+      stats_reset
+    FROM pg_stat_wal
+  master: true
+  metrics:
+    - wal_records:
+        usage: "COUNTER"
+        description: "생성된 총 WAL 레코드 수"
+    - wal_fpi:
+        usage: "COUNTER"
+        description: "Full Page Image (FPI) 수"
+    - wal_bytes:
+        usage: "COUNTER"
+        description: "생성된 총 WAL 바이트 수"
+    - wal_buffers_full:
+        usage: "COUNTER"
+        description: "WAL 버퍼 가득 참 횟수 (wal_buffers 증가 필요 신호)"
+    - wal_write:
+        usage: "COUNTER"
+        description: "WAL 쓰기 호출 횟수"
+    - wal_sync:
+        usage: "COUNTER"
+        description: "WAL fsync 호출 횟수"
+    - wal_write_time_ms:
+        usage: "COUNTER"
+        description: "총 WAL 쓰기 시간 (ms)"
+    - wal_sync_time_ms:
+        usage: "COUNTER"
+        description: "총 WAL sync 시간 (ms)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Autovacuum 진행 상태
+# 현재 실행 중인 Autovacuum 작업의 진행률과 상태
+# ─────────────────────────────────────────────────────────────────────────────
+pg_autovacuum_progress:
+  query: |
+    SELECT 
+      s.schemaname AS schema_name,
+      s.relname AS table_name,
+      p.phase,
+      p.heap_blks_total,
+      p.heap_blks_scanned,
+      p.heap_blks_vacuumed,
+      p.index_vacuum_count,
+      p.max_dead_tuples,
+      p.num_dead_tuples,
+      CASE WHEN p.heap_blks_total > 0 
+        THEN round(p.heap_blks_scanned::numeric / p.heap_blks_total, 4) 
+        ELSE 0 
+      END AS scan_progress,
+      CASE WHEN p.heap_blks_total > 0 
+        THEN round(p.heap_blks_vacuumed::numeric / p.heap_blks_total, 4) 
+        ELSE 0 
+      END AS vacuum_progress
+    FROM pg_stat_progress_vacuum p
+    JOIN pg_stat_all_tables s ON s.relid = p.relid
+  metrics:
+    - schema_name:
+        usage: "LABEL"
+        description: "스키마 이름"
+    - table_name:
+        usage: "LABEL"
+        description: "테이블 이름"
+    - phase:
+        usage: "LABEL"
+        description: "현재 VACUUM 단계 (scanning heap, vacuuming indexes, etc.)"
+    - heap_blks_total:
+        usage: "GAUGE"
+        description: "전체 힙 블록 수"
+    - heap_blks_scanned:
+        usage: "GAUGE"
+        description: "스캔 완료된 힙 블록 수"
+    - heap_blks_vacuumed:
+        usage: "GAUGE"
+        description: "VACUUM 완료된 힙 블록 수"
+    - index_vacuum_count:
+        usage: "GAUGE"
+        description: "인덱스 VACUUM 반복 횟수"
+    - max_dead_tuples:
+        usage: "GAUGE"
+        description: "한 번에 처리 가능한 최대 Dead Tuple 수"
+    - num_dead_tuples:
+        usage: "GAUGE"
+        description: "현재까지 발견된 Dead Tuple 수"
+    - scan_progress:
+        usage: "GAUGE"
+        description: "스캔 진행률 (0~1)"
+    - vacuum_progress:
+        usage: "GAUGE"
+        description: "VACUUM 진행률 (0~1)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Autovacuum 대기열 (아직 처리되지 않은 테이블)
+# dead_tuples가 threshold를 넘었으나 아직 vacuum 실행되지 않은 테이블
+# ─────────────────────────────────────────────────────────────────────────────
+pg_autovacuum_pending:
+  query: |
+    SELECT 
+      schemaname AS schema_name,
+      relname AS table_name,
+      n_dead_tup AS dead_tuples,
+      n_live_tup AS live_tuples,
+      CASE WHEN n_live_tup > 0 
+        THEN round(n_dead_tup::numeric / n_live_tup, 4) 
+        ELSE 0 
+      END AS dead_to_live_ratio,
+      last_autovacuum,
+      EXTRACT(EPOCH FROM (now() - last_autovacuum)) AS seconds_since_last_vacuum
+    FROM pg_stat_user_tables
+    WHERE n_dead_tup > 1000
+    ORDER BY n_dead_tup DESC
+    LIMIT 30
+  metrics:
+    - schema_name:
+        usage: "LABEL"
+        description: "스키마 이름"
+    - table_name:
+        usage: "LABEL"
+        description: "테이블 이름"
+    - dead_tuples:
+        usage: "GAUGE"
+        description: "Dead Tuple 수"
+    - live_tuples:
+        usage: "GAUGE"
+        description: "Live Tuple 수"
+    - dead_to_live_ratio:
+        usage: "GAUGE"
+        description: "Dead/Live 비율"
+    - seconds_since_last_vacuum:
+        usage: "GAUGE"
+        description: "마지막 Autovacuum 이후 경과 시간(초)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TOAST 테이블 팽창
+# TOAST 크기가 비정상적으로 커지면 저장 비용 증가 및 쿼리 성능 저하
+# ─────────────────────────────────────────────────────────────────────────────
+pg_toast_table_bloat:
+  query: |
+    SELECT 
+      n.nspname AS schema_name,
+      c.relname AS table_name,
+      pg_relation_size(c.oid) AS main_size_bytes,
+      pg_total_relation_size(c.reltoastrelid) AS toast_size_bytes,
+      CASE WHEN pg_relation_size(c.oid) > 0
+        THEN round(pg_total_relation_size(c.reltoastrelid)::numeric / pg_relation_size(c.oid), 4)
+        ELSE 0
+      END AS toast_to_main_ratio
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.reltoastrelid != 0
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND pg_total_relation_size(c.reltoastrelid) > 1048576  -- 1MB 이상만
+    ORDER BY pg_total_relation_size(c.reltoastrelid) DESC
+    LIMIT 20
+  metrics:
+    - schema_name:
+        usage: "LABEL"
+        description: "스키마 이름"
+    - table_name:
+        usage: "LABEL"
+        description: "테이블 이름"
+    - main_size_bytes:
+        usage: "GAUGE"
+        description: "메인 테이블 크기 (바이트)"
+    - toast_size_bytes:
+        usage: "GAUGE"
+        description: "TOAST 테이블 크기 (바이트)"
+    - toast_to_main_ratio:
+        usage: "GAUGE"
+        description: "TOAST/메인 크기 비율"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Long Running Queries
+# 5분 이상 실행 중인 쿼리 감지
+# ─────────────────────────────────────────────────────────────────────────────
+pg_long_running_queries:
+  query: |
+    SELECT 
+      COUNT(*) AS count,
+      COALESCE(MAX(EXTRACT(EPOCH FROM (now() - query_start))), 0) AS max_duration_seconds,
+      COALESCE(AVG(EXTRACT(EPOCH FROM (now() - query_start))), 0) AS avg_duration_seconds
+    FROM pg_stat_activity
+    WHERE state = 'active'
+      AND query_start < now() - interval '5 minutes'
+      AND backend_type = 'client backend'
+  metrics:
+    - count:
+        usage: "GAUGE"
+        description: "5분 이상 실행 중인 쿼리 수"
+    - max_duration_seconds:
+        usage: "GAUGE"
+        description: "가장 오래 실행 중인 쿼리 시간(초)"
+    - avg_duration_seconds:
+        usage: "GAUGE"
+        description: "장시간 쿼리 평균 시간(초)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 테이블 팽창률 (Bloat) 추정
+# ─────────────────────────────────────────────────────────────────────────────
+pg_table_bloat_estimate:
+  query: |
+    SELECT
+      schemaname AS schema_name,
+      relname AS table_name,
+      n_live_tup AS live_tuples,
+      n_dead_tup AS dead_tuples,
+      pg_relation_size(relid) AS table_size_bytes,
+      CASE WHEN n_live_tup > 0 
+        THEN round((n_dead_tup::numeric / (n_live_tup + n_dead_tup)) * 100, 2)
+        ELSE 0
+      END AS bloat_pct
+    FROM pg_stat_user_tables
+    WHERE n_dead_tup > 10000
+    ORDER BY n_dead_tup DESC
+    LIMIT 20
+  metrics:
+    - schema_name:
+        usage: "LABEL"
+        description: "스키마 이름"
+    - table_name:
+        usage: "LABEL"
+        description: "테이블 이름"
+    - live_tuples:
+        usage: "GAUGE"
+        description: "Live Tuple 수"
+    - dead_tuples:
+        usage: "GAUGE"
+        description: "Dead Tuple 수"
+    - table_size_bytes:
+        usage: "GAUGE"
+        description: "테이블 크기 (바이트)"
+    - bloat_pct:
+        usage: "GAUGE"
+        description: "추정 팽창률 (%)"

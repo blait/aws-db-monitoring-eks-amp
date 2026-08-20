@@ -1,0 +1,186 @@
+# =============================================================================
+# CloudFormation: 중앙 모니터링 계정(Hub)에 배포할 IAM 역할
+# =============================================================================
+#
+# 이 템플릿은 EKS Discovery CronJob과 Exporter Pod이
+# 각 워크로드 계정의 MonitoringTargetRole을 AssumeRole할 수 있도록 합니다.
+#
+# 배포: aws cloudformation deploy --template-file hub-account-role-cfn.yaml \
+#         --stack-name db-monitoring-hub-role \
+#         --parameter-overrides ClusterName=$CLUSTER_NAME \
+#         --capabilities CAPABILITY_NAMED_IAM
+# =============================================================================
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  중앙 모니터링 계정용 Hub IAM 역할.
+  EKS Discovery CronJob이 워크로드 계정들의 DB를 디스커버리할 수 있도록 합니다.
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: "integrated-db-monitoring-eks"
+    Description: "EKS 클러스터 이름"
+
+  OidcProvider:
+    Type: String
+    Description: "EKS OIDC Provider URL (oidc.eks.region.amazonaws.com/id/XXXXX)"
+
+  Namespace:
+    Type: String
+    Default: "observability"
+    Description: "Discovery CronJob이 실행되는 Kubernetes 네임스페이스"
+
+  ServiceAccountName:
+    Type: String
+    Default: "db-discovery-multi-account"
+    Description: "Discovery CronJob의 ServiceAccount 이름"
+
+  # 대상 계정 목록 (최대 10개, 더 필요하면 정책 추가)
+  TargetAccountIds:
+    Type: CommaDelimitedList
+    Description: "모니터링 대상 워크로드 계정 ID 목록 (쉼표 구분)"
+    Default: "111111111111,222222222222,333333333333"
+
+Resources:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Discovery CronJob용 IAM Role (IRSA)
+  # ─────────────────────────────────────────────────────────────────────────
+  DiscoveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-discovery-role"
+      Description: "멀티 어카운트 DB Discovery CronJob용 IAM Role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/${OidcProvider}"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                !Sub "${OidcProvider}:sub": !Sub "system:serviceaccount:${Namespace}:${ServiceAccountName}"
+                !Sub "${OidcProvider}:aud": "sts.amazonaws.com"
+      Policies:
+        # ── Cross-Account AssumeRole 권한 ──
+        - PolicyName: CrossAccountAssumeRole
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AssumeTargetRoles
+                Effect: Allow
+                Action: "sts:AssumeRole"
+                Resource:
+                  # 모든 대상 계정의 DBMonitoringTargetRole을 Assume 가능
+                  - "arn:aws:iam::*:role/DBMonitoringTargetRole"
+                Condition:
+                  StringEquals:
+                    "sts:ExternalId": "db-monitoring-cross-account"
+
+        # ── 로컬 계정(중앙) DB 디스커버리 (자체 계정도 모니터링) ──
+        - PolicyName: LocalDiscoveryPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LocalRDS
+                Effect: Allow
+                Action:
+                  - "rds:DescribeDBClusters"
+                  - "rds:DescribeDBInstances"
+                  - "rds:DescribeDBClusterEndpoints"
+                  - "rds:ListTagsForResource"
+                Resource: "*"
+              - Sid: LocalElastiCache
+                Effect: Allow
+                Action:
+                  - "elasticache:DescribeCacheClusters"
+                  - "elasticache:DescribeReplicationGroups"
+                  - "elasticache:ListTagsForResource"
+                Resource: "*"
+              - Sid: LocalDynamoDB
+                Effect: Allow
+                Action:
+                  - "dynamodb:ListTables"
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:ListTagsOfResource"
+                Resource: "*"
+              - Sid: LocalCloudWatch
+                Effect: Allow
+                Action:
+                  - "cloudwatch:GetMetricData"
+                  - "cloudwatch:ListMetrics"
+                Resource: "*"
+              - Sid: LocalTags
+                Effect: Allow
+                Action:
+                  - "tag:GetResources"
+                Resource: "*"
+
+        # ── AMP Remote Write (ADOT Collector용) ──
+        - PolicyName: AMPWritePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AMPWrite
+                Effect: Allow
+                Action:
+                  - "aps:RemoteWrite"
+                  - "aps:GetSeries"
+                  - "aps:GetLabels"
+                  - "aps:GetMetricMetadata"
+                Resource: !Sub "arn:aws:aps:${AWS::Region}:${AWS::AccountId}:workspace/*"
+
+        # ── Kubernetes 리소스 관리 (Exporter 생성/삭제는 RBAC로) ──
+        # EKS API는 RBAC이므로 여기서는 IAM 불필요
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Exporter Pod용 IAM Role (Cross-Account Secrets Manager 접근)
+  # ─────────────────────────────────────────────────────────────────────────
+  ExporterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-exporter-role"
+      Description: "Exporter Pod이 대상 계정의 Secrets Manager에서 DB 자격증명을 읽어오는 역할"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/${OidcProvider}"
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringLike:
+                # observability 네임스페이스의 모든 exporter ServiceAccount 허용
+                !Sub "${OidcProvider}:sub": !Sub "system:serviceaccount:${Namespace}:*-exporter"
+                !Sub "${OidcProvider}:aud": "sts.amazonaws.com"
+      Policies:
+        - PolicyName: CrossAccountAssumeForSecrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AssumeTargetForSecrets
+                Effect: Allow
+                Action: "sts:AssumeRole"
+                Resource: "arn:aws:iam::*:role/DBMonitoringTargetRole"
+                Condition:
+                  StringEquals:
+                    "sts:ExternalId": "db-monitoring-cross-account"
+
+Outputs:
+  DiscoveryRoleArn:
+    Description: "Discovery CronJob ServiceAccount에 annotation으로 등록할 Role ARN"
+    Value: !GetAtt DiscoveryRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-DiscoveryRoleArn"
+
+  ExporterRoleArn:
+    Description: "Exporter Pod ServiceAccount에 annotation으로 등록할 Role ARN"
+    Value: !GetAtt ExporterRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ExporterRoleArn"
+
+  ServiceAccountAnnotation:
+    Description: "Kubernetes ServiceAccount에 추가할 annotation"
+    Value: !Sub |
+      kubectl annotate serviceaccount -n ${Namespace} ${ServiceAccountName} \
+        eks.amazonaws.com/role-arn=${DiscoveryRole.Arn}

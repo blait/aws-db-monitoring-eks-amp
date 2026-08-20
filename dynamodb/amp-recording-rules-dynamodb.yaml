@@ -1,0 +1,289 @@
+# =============================================================================
+# AMP Recording Rules — DynamoDB 메트릭 집계 + 중복 제거 + 알림
+# =============================================================================
+#
+# ADOT Collector replicas:2에서 수집된 DynamoDB 메트릭을 
+# max without(pod)로 중복 제거하고, pre-aggregation으로 비용 절감합니다.
+#
+# 📌 적용 방법:
+# aws amp create-rule-groups-namespace \
+#   --workspace-id $AMP_WORKSPACE_ID \
+#   --name "dynamodb-monitoring-rules" \
+#   --data fileb://amp-recording-rules-dynamodb.yaml
+#
+# 💡 Grafana 대시보드에서는 이 Recording Rule 메트릭(db: 접두사)만 사용합니다.
+# =============================================================================
+
+groups:
+  # ─────────────────────────────────────────────────────────────────────────
+  # DynamoDB 용량 메트릭 집계
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: dynamodb_capacity
+    interval: 60s
+    rules:
+      # 읽기 용량 소비 (RCU)
+      - record: db:dynamodb_consumed_rcu:by_table
+        expr: max without(pod) (aws_dynamodb_consumed_read_capacity_units_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 쓰기 용량 소비 (WCU)
+      - record: db:dynamodb_consumed_wcu:by_table
+        expr: max without(pod) (aws_dynamodb_consumed_write_capacity_units_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 프로비저닝된 읽기 용량
+      - record: db:dynamodb_provisioned_rcu:by_table
+        expr: max without(pod) (aws_dynamodb_provisioned_read_capacity_units_average)
+        labels:
+          db_engine: dynamodb
+
+      # 프로비저닝된 쓰기 용량
+      - record: db:dynamodb_provisioned_wcu:by_table
+        expr: max without(pod) (aws_dynamodb_provisioned_write_capacity_units_average)
+        labels:
+          db_engine: dynamodb
+
+      # RCU 사용률 (%)
+      - record: db:dynamodb_rcu_utilization:by_table
+        expr: |
+          (db:dynamodb_consumed_rcu:by_table / db:dynamodb_provisioned_rcu:by_table) * 100
+        labels:
+          db_engine: dynamodb
+
+      # WCU 사용률 (%)
+      - record: db:dynamodb_wcu_utilization:by_table
+        expr: |
+          (db:dynamodb_consumed_wcu:by_table / db:dynamodb_provisioned_wcu:by_table) * 100
+        labels:
+          db_engine: dynamodb
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DynamoDB 스로틀링 메트릭
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: dynamodb_throttle
+    interval: 60s
+    rules:
+      # 읽기 스로틀 이벤트
+      - record: db:dynamodb_read_throttle_events:by_table
+        expr: max without(pod) (aws_dynamodb_read_throttle_events_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 쓰기 스로틀 이벤트
+      - record: db:dynamodb_write_throttle_events:by_table
+        expr: max without(pod) (aws_dynamodb_write_throttle_events_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 총 스로틀 요청
+      - record: db:dynamodb_throttled_requests:by_table
+        expr: max without(pod) (aws_dynamodb_throttled_requests_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 스로틀 비율 (읽기)
+      - record: db:dynamodb_read_throttle_rate:by_table
+        expr: |
+          max without(pod) (rate(aws_dynamodb_read_throttle_events_sum[5m]))
+        labels:
+          db_engine: dynamodb
+
+      # 스로틀 비율 (쓰기)
+      - record: db:dynamodb_write_throttle_rate:by_table
+        expr: |
+          max without(pod) (rate(aws_dynamodb_write_throttle_events_sum[5m]))
+        labels:
+          db_engine: dynamodb
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DynamoDB 지연시간 메트릭
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: dynamodb_latency
+    interval: 60s
+    rules:
+      # 평균 요청 지연시간 (ms)
+      - record: db:dynamodb_latency_avg:by_table
+        expr: max without(pod) (aws_dynamodb_successful_request_latency_average)
+        labels:
+          db_engine: dynamodb
+
+      # P50 요청 지연시간
+      - record: db:dynamodb_latency_p50:by_table
+        expr: max without(pod) (aws_dynamodb_successful_request_latency_p50)
+        labels:
+          db_engine: dynamodb
+
+      # P99 요청 지연시간
+      - record: db:dynamodb_latency_p99:by_table
+        expr: max without(pod) (aws_dynamodb_successful_request_latency_p99)
+        labels:
+          db_engine: dynamodb
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DynamoDB 에러 메트릭
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: dynamodb_errors
+    interval: 60s
+    rules:
+      # 시스템 에러
+      - record: db:dynamodb_system_errors:by_table
+        expr: max without(pod) (aws_dynamodb_system_errors_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 사용자 에러
+      - record: db:dynamodb_user_errors:by_table
+        expr: max without(pod) (aws_dynamodb_user_errors_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 조건부 체크 실패
+      - record: db:dynamodb_conditional_check_failed:by_table
+        expr: max without(pod) (aws_dynamodb_conditional_check_failed_requests_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 트랜잭션 충돌
+      - record: db:dynamodb_transaction_conflict:by_table
+        expr: max without(pod) (aws_dynamodb_transaction_conflict_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 시스템 에러 비율
+      - record: db:dynamodb_system_error_rate:by_table
+        expr: |
+          max without(pod) (rate(aws_dynamodb_system_errors_sum[5m]))
+        labels:
+          db_engine: dynamodb
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DynamoDB 아이템/데이터 메트릭
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: dynamodb_items
+    interval: 60s
+    rules:
+      # 반환된 아이템 수
+      - record: db:dynamodb_returned_item_count:by_table
+        expr: max without(pod) (aws_dynamodb_returned_item_count_sum)
+        labels:
+          db_engine: dynamodb
+
+      # 반환된 바이트 수
+      - record: db:dynamodb_returned_bytes:by_table
+        expr: max without(pod) (aws_dynamodb_returned_bytes_sum)
+        labels:
+          db_engine: dynamodb
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DynamoDB 계정 레벨 메트릭
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: dynamodb_account
+    interval: 300s
+    rules:
+      # 계정 최대 읽기 용량
+      - record: db:dynamodb_account_max_reads
+        expr: max(aws_dynamodb_account_max_reads_maximum)
+        labels:
+          db_engine: dynamodb
+
+      # 계정 최대 쓰기 용량
+      - record: db:dynamodb_account_max_writes
+        expr: max(aws_dynamodb_account_max_writes_maximum)
+        labels:
+          db_engine: dynamodb
+
+      # 계정 프로비저닝 읽기 사용률
+      - record: db:dynamodb_account_read_utilization
+        expr: max(aws_dynamodb_account_provisioned_read_capacity_utilization_maximum)
+        labels:
+          db_engine: dynamodb
+
+      # 계정 프로비저닝 쓰기 사용률
+      - record: db:dynamodb_account_write_utilization
+        expr: max(aws_dynamodb_account_provisioned_write_capacity_utilization_maximum)
+        labels:
+          db_engine: dynamodb
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DynamoDB 알림 규칙
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: dynamodb_alerts
+    rules:
+      # 읽기 스로틀 발생 (1분간 5회 이상)
+      - alert: DynamoDBReadThrottleHigh
+        expr: db:dynamodb_read_throttle_rate:by_table > 5
+        for: 2m
+        labels:
+          severity: warning
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB 읽기 스로틀 발생: {{ $labels.TableName }}"
+          description: "테이블 {{ $labels.TableName }}에서 읽기 스로틀이 분당 {{ $value }}회 발생 중입니다. 용량 증가 또는 요청 패턴 최적화를 검토하세요."
+
+      # 쓰기 스로틀 발생
+      - alert: DynamoDBWriteThrottleHigh
+        expr: db:dynamodb_write_throttle_rate:by_table > 5
+        for: 2m
+        labels:
+          severity: warning
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB 쓰기 스로틀 발생: {{ $labels.TableName }}"
+          description: "테이블 {{ $labels.TableName }}에서 쓰기 스로틀이 분당 {{ $value }}회 발생 중입니다."
+
+      # 지연시간 높음 (P99 > 50ms)
+      - alert: DynamoDBLatencyHigh
+        expr: db:dynamodb_latency_p99:by_table > 50
+        for: 5m
+        labels:
+          severity: warning
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB 지연시간 높음: {{ $labels.TableName }}"
+          description: "테이블 {{ $labels.TableName }}의 P99 지연시간이 {{ $value }}ms입니다. 핫 파티션이나 대용량 아이템을 확인하세요."
+
+      # RCU 사용률 높음 (> 80%)
+      - alert: DynamoDBRCUUtilizationHigh
+        expr: db:dynamodb_rcu_utilization:by_table > 80
+        for: 5m
+        labels:
+          severity: warning
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB RCU 사용률 높음: {{ $labels.TableName }}"
+          description: "테이블 {{ $labels.TableName }}의 RCU 사용률이 {{ $value }}%입니다. Auto Scaling 설정을 확인하세요."
+
+      # WCU 사용률 높음 (> 80%)
+      - alert: DynamoDBWCUUtilizationHigh
+        expr: db:dynamodb_wcu_utilization:by_table > 80
+        for: 5m
+        labels:
+          severity: warning
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB WCU 사용률 높음: {{ $labels.TableName }}"
+          description: "테이블 {{ $labels.TableName }}의 WCU 사용률이 {{ $value }}%입니다."
+
+      # 시스템 에러 발생 (심각)
+      - alert: DynamoDBSystemErrors
+        expr: db:dynamodb_system_error_rate:by_table > 0
+        for: 1m
+        labels:
+          severity: critical
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB 시스템 에러 발생: {{ $labels.TableName }}"
+          description: "테이블 {{ $labels.TableName }}에서 시스템 에러가 발생하고 있습니다. AWS 서비스 상태를 확인하세요."
+
+      # 계정 용량 한도 접근 (> 75%)
+      - alert: DynamoDBAccountCapacityHigh
+        expr: db:dynamodb_account_read_utilization > 75 or db:dynamodb_account_write_utilization > 75
+        for: 10m
+        labels:
+          severity: critical
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB 계정 용량 한도 접근"
+          description: "DynamoDB 계정 용량 사용률이 {{ $value }}%에 도달했습니다. 서비스 한도 증가를 요청하세요."

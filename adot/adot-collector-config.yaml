@@ -1,0 +1,345 @@
+# =============================================================================
+# ADOT Collector 통합 설정 (OpenTelemetry Collector Configuration)
+# =============================================================================
+# 모든 Exporter를 스크래핑하여 Amazon Managed Prometheus(AMP)로 전달
+# 포함: MySQL Exporter, PostgreSQL Exporter, Redis Exporter, MSSQL Exporter
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adot-collector-config
+  namespace: observability
+  labels:
+    app: adot-collector
+    component: otel-collector-config
+data:
+  collector-config.yaml: |
+    # ─────────────────────────────────────────────────────────────────
+    # Receivers: 각 Exporter로부터 메트릭을 PULL 방식으로 수집
+    # ─────────────────────────────────────────────────────────────────
+    receivers:
+      # Prometheus Receiver — 메인 스크래핑 엔진
+      prometheus:
+        config:
+          global:
+            scrape_interval: 30s      # 기본 스크래핑 주기
+            scrape_timeout: 10s       # 스크래핑 타임아웃
+            evaluation_interval: 30s  # 룰 평가 주기
+
+          scrape_configs:
+            # ─── Job 1: MySQL Exporter 스크래핑 ───
+            - job_name: 'mysql-exporter'
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                # mysql-exporter 라벨이 있는 Pod만 필터링
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  regex: mysql-exporter
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                  regex: '(\d+)'
+                  target_label: __address__
+                  replacement: '${1}:$${2}'
+                  action: replace
+                  source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                # 인스턴스 라벨에 DB 엔드포인트 정보 추가
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  target_label: db_instance
+                - source_labels: [__meta_kubernetes_pod_label_db_role]
+                  target_label: db_role
+                - source_labels: [__meta_kubernetes_pod_label_db_engine]
+                  target_label: db_engine
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: 'mysql_.*'
+                  action: keep
+
+            # ─── Job 2: PostgreSQL Exporter 스크래핑 ───
+            - job_name: 'postgresql-exporter'
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  regex: postgresql-exporter
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  regex: '(.+);(\d+)'
+                  target_label: __address__
+                  replacement: '${1}:${2}'
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  target_label: db_instance
+                - source_labels: [__meta_kubernetes_pod_label_db_role]
+                  target_label: db_role
+                - source_labels: [__meta_kubernetes_pod_label_db_engine]
+                  target_label: db_engine
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: 'pg_.*'
+                  action: keep
+
+            # ─── Job 3: Redis (Valkey) Exporter 스크래핑 ───
+            - job_name: 'redis-exporter'
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  regex: redis-exporter
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  regex: '(.+);(\d+)'
+                  target_label: __address__
+                  replacement: '${1}:${2}'
+                - source_labels: [__meta_kubernetes_pod_label_cache_cluster]
+                  target_label: cache_cluster
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: 'redis_.*'
+                  action: keep
+
+            # ─── Job 4: MS SQL Exporter 스크래핑 ───
+            - job_name: 'mssql-exporter'
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  regex: mssql-exporter
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  regex: '(.+);(\d+)'
+                  target_label: __address__
+                  replacement: '${1}:${2}'
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  target_label: db_instance
+                - source_labels: [__meta_kubernetes_pod_label_db_engine]
+                  target_label: db_engine
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: 'mssql_.*'
+                  action: keep
+
+            # ─── Job 5: Kubernetes Pods 자동 발견 (Fallback) ───
+            # prometheus.io/scrape annotation이 있는 모든 Pod 스크래핑
+            - job_name: 'kubernetes-pods'
+              scrape_interval: 60s
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  regex: "true"
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  regex: (.+)
+                  target_label: __metrics_path__
+                - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  regex: '(.+);(\d+)'
+                  target_label: __address__
+                  replacement: '${1}:${2}'
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: namespace
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
+
+    # ─────────────────────────────────────────────────────────────────
+    # Processors: 메트릭 처리 파이프라인
+    # ─────────────────────────────────────────────────────────────────
+    processors:
+      # 배치 처리 (AMP remote_write 효율성)
+      batch:
+        timeout: 30s
+        send_batch_size: 1000
+        send_batch_max_size: 1500
+
+      # 메모리 제한 (OOM 방지)
+      memory_limiter:
+        check_interval: 5s
+        limit_mib: 512
+        spike_limit_mib: 128
+
+      # 리소스 속성 추가 (클러스터 정보)
+      resource:
+        attributes:
+          - key: cluster.name
+            value: "${CLUSTER_NAME}"
+            action: upsert
+          - key: aws.region
+            value: "${AWS_REGION}"
+            action: upsert
+
+    # ─────────────────────────────────────────────────────────────────
+    # Exporters: AMP로 메트릭 전송 (PUSH 방식, Remote Write)
+    # ─────────────────────────────────────────────────────────────────
+    exporters:
+      # Amazon Managed Prometheus Remote Write
+      prometheusremotewrite:
+        endpoint: "${AMP_ENDPOINT}"
+        auth:
+          authenticator: sigv4auth
+        resource_to_telemetry_conversion:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+
+    # ─────────────────────────────────────────────────────────────────
+    # Extensions: 인증 및 헬스체크
+    # ─────────────────────────────────────────────────────────────────
+    extensions:
+      # AWS SigV4 인증 (IRSA 기반)
+      sigv4auth:
+        region: "${AWS_REGION}"
+        service: "aps"
+      
+      # 헬스 체크 엔드포인트
+      health_check:
+        endpoint: "0.0.0.0:13133"
+
+    # ─────────────────────────────────────────────────────────────────
+    # Service: 파이프라인 정의
+    # ─────────────────────────────────────────────────────────────────
+    service:
+      extensions: [sigv4auth, health_check]
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, batch, resource]
+          exporters: [prometheusremotewrite]
+      
+      # 텔레메트리 (ADOT Collector 자체 로깅)
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: "0.0.0.0:8888"
+
+---
+# =============================================================================
+# ADOT Collector Deployment
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adot-collector
+  namespace: observability
+  labels:
+    app: adot-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adot-collector
+  template:
+    metadata:
+      labels:
+        app: adot-collector
+    spec:
+      serviceAccountName: adot-collector
+      containers:
+        - name: adot-collector
+          image: public.ecr.aws/aws-observability/aws-otel-collector:v0.40.0
+          command:
+            - "/awscollector"
+            - "--config=/conf/collector-config.yaml"
+          ports:
+            - containerPort: 4317   # OTLP gRPC
+            - containerPort: 4318   # OTLP HTTP
+            - containerPort: 8888   # 자체 메트릭
+            - containerPort: 13133  # 헬스체크
+          volumeMounts:
+            - name: config-volume
+              mountPath: /conf
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: config-volume
+          configMap:
+            name: adot-collector-config
+
+---
+# =============================================================================
+# ADOT Collector Service Account (IRSA 연동)
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: adot-collector
+  namespace: observability
+  annotations:
+    # IRSA: AMP Remote Write 권한이 있는 IAM 역할 연결
+    eks.amazonaws.com/role-arn: "${ADOT_ROLE_ARN}"
+  labels:
+    app: adot-collector
+
+---
+# =============================================================================
+# ADOT Collector Service
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: adot-collector
+  namespace: observability
+  labels:
+    app: adot-collector
+spec:
+  type: ClusterIP
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+    - name: metrics
+      port: 8888
+      targetPort: 8888
+  selector:
+    app: adot-collector
+
+---
+# =============================================================================
+# Namespace 생성
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    name: observability

@@ -1,0 +1,169 @@
+# =============================================================================
+# 멀티 어카운트/리전 모니터링 설정 (ConfigMap)
+# =============================================================================
+# 
+# 이 파일은 중앙 모니터링 계정의 EKS에 ConfigMap으로 배포됩니다.
+# 새 계정/리전을 추가할 때 이 파일만 수정하면 됩니다.
+#
+# 적용: kubectl apply -f multi-account-config.yaml
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-discovery-multi-account-config
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: multi-account-config
+data:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 대상 계정/리전 설정
+  # ─────────────────────────────────────────────────────────────────────────
+  accounts.yaml: |
+    # 중앙 모니터링 계정 정보
+    hub_account:
+      id: "${ACCOUNT_ID}"                    # 중앙 모니터링 계정 ID
+      region: "${AWS_REGION}"                # EKS/AMP/AMG가 있는 리전
+      eks_cluster: "${CLUSTER_NAME}"
+      amp_workspace_id: "${AMP_WORKSPACE_ID}"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 모니터링 대상 계정 목록
+    # 새 계정 추가 시 여기에 항목을 추가하세요.
+    # ─────────────────────────────────────────────────────────────────────
+    target_accounts:
+      # ── 예시: Production 계정 ──
+      - id: "111111111111"
+        name: "production"                   # 사람이 읽기 쉬운 이름 (Grafana 라벨에 사용)
+        role_arn: "arn:aws:iam::111111111111:role/DBMonitoringTargetRole"
+        regions:
+          - "ap-northeast-2"                 # 서울
+          - "us-east-1"                      # 버지니아
+        # 선택: 특정 VPC만 모니터링 (비워두면 모든 VPC)
+        vpc_filter: []
+        # 선택: 특정 태그가 있는 DB만 모니터링
+        tag_filter:
+          key: "monitoring"
+          value: "enabled"
+
+      # ── 예시: Staging 계정 ──
+      - id: "222222222222"
+        name: "staging"
+        role_arn: "arn:aws:iam::222222222222:role/DBMonitoringTargetRole"
+        regions:
+          - "ap-northeast-2"
+        vpc_filter: []
+        tag_filter:
+          key: "monitoring"
+          value: "enabled"
+
+      # ── 예시: Development 계정 ──
+      - id: "333333333333"
+        name: "development"
+        role_arn: "arn:aws:iam::333333333333:role/DBMonitoringTargetRole"
+        regions:
+          - "ap-northeast-2"
+        vpc_filter: []
+        # Dev 계정은 태그 필터 없이 전체 DB 모니터링
+        tag_filter: {}
+
+      # ── 예시: 다른 리전(유럽) 계정 ──
+      - id: "444444444444"
+        name: "eu-services"
+        role_arn: "arn:aws:iam::444444444444:role/DBMonitoringTargetRole"
+        regions:
+          - "eu-west-1"                      # 아일랜드
+          - "eu-central-1"                   # 프랑크푸르트
+        vpc_filter: []
+        tag_filter:
+          key: "monitoring"
+          value: "enabled"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Discovery 설정
+    # ─────────────────────────────────────────────────────────────────────
+    discovery:
+      # Discovery 주기 (CronJob schedule)
+      schedule: "*/5 * * * *"              # 5분마다
+      
+      # 대상 DB 엔진 (활성화할 엔진만 true)
+      engines:
+        aurora_mysql: true
+        aurora_postgresql: true
+        rds_mysql: true
+        rds_postgresql: true
+        rds_sqlserver: true
+        elasticache_redis: true
+        elasticache_valkey: true
+        dynamodb: true
+      
+      # AssumeRole 세션 설정
+      assume_role:
+        session_name: "DBMonitoringDiscovery"
+        duration_seconds: 3600             # 1시간 (CronJob 주기보다 길게)
+      
+      # 동시성: 한번에 처리할 계정/리전 조합 수
+      concurrency: 3
+      
+      # 에러 허용: 특정 계정 실패 시 계속 진행
+      continue_on_error: true
+      
+      # DRY-RUN 모드 (true면 실제 생성/삭제 없이 로그만)
+      dry_run: false
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Exporter 설정
+    # ─────────────────────────────────────────────────────────────────────
+    exporter:
+      # HA: 각 DB 인스턴스당 Exporter Pod 수
+      replicas: 2
+      
+      # 네임스페이스
+      namespace: "observability"
+      
+      # 이미지 설정 (기본값, 계정별 override 가능)
+      images:
+        mysql_exporter: "prom/mysqld-exporter:v0.15.1"
+        postgresql_exporter: "prometheuscommunity/postgres-exporter:v0.15.0"
+        mssql_exporter: "awarber/prometheus-mssql-exporter:0.4.0"
+        redis_exporter: "oliver006/redis_exporter:v1.58.0"
+      
+      # 리소스 제한
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+        limits:
+          cpu: "200m"
+          memory: "128Mi"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # DB 인증 설정
+    # ─────────────────────────────────────────────────────────────────────
+    authentication:
+      # DB 접속 인증 방식
+      # "secrets_manager" — 각 계정의 Secrets Manager에서 자격 증명 가져오기
+      # "iam_auth" — IAM Database Authentication (Aurora/RDS만)
+      method: "secrets_manager"
+      
+      # Secrets Manager 시크릿 이름 패턴
+      # {db_identifier}를 실제 DB 식별자로 치환
+      secret_name_pattern: "db-monitoring/{db_identifier}/credentials"
+      
+      # Cross-Account Secrets Manager 접근 방식
+      # "assume_role" — 대상 계정의 역할로 AssumeRole 후 접근
+      # "resource_policy" — 시크릿에 리소스 정책으로 중앙 계정 허용
+      cross_account_method: "assume_role"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 네트워크 설정
+    # ─────────────────────────────────────────────────────────────────────
+    network:
+      # 연결 방식: "transit_gateway" | "vpc_peering" | "privatelink"
+      connectivity: "transit_gateway"
+      
+      # Transit Gateway ID (transit_gateway 방식일 때)
+      transit_gateway_id: "tgw-0123456789abcdef0"
+      
+      # DNS 해석 방식: "route53_resolver" | "private_hosted_zone"
+      dns_resolution: "route53_resolver"

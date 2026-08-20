@@ -1,0 +1,49 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAMPAlertManagerSNSPublish",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish",
+        "sns:GetTopicAttributes"
+      ],
+      "Resource": [
+        "arn:aws:sns:*:*:integrated-db-monitoring-alert-info",
+        "arn:aws:sns:*:*:integrated-db-monitoring-alert-warning",
+        "arn:aws:sns:*:*:integrated-db-monitoring-alert-critical"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalServiceName": "aps.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "AllowAMGSNSPublish",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish",
+        "sns:GetTopicAttributes",
+        "sns:ListTopics"
+      ],
+      "Resource": [
+        "arn:aws:sns:*:*:integrated-db-monitoring-alert-*"
+      ]
+    },
+    {
+      "Sid": "AllowKMSForSNS",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey*",
+        "kms:Decrypt"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "sns.*.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

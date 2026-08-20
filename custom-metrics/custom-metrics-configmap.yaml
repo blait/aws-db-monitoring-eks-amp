@@ -1,0 +1,232 @@
+# =============================================================================
+# 커스텀 메트릭 ConfigMap
+# =============================================================================
+# 모든 커스텀 쿼리/스크립트를 Kubernetes ConfigMap으로 정의
+# Exporter Pod에서 Volume Mount로 사용
+#
+# 사용법:
+#   kubectl apply -f custom-metrics-configmap.yaml -n observability
+#
+# 커스텀 메트릭 추가 방법 (3단계):
+#   1. 이 ConfigMap의 해당 data 섹션에 쿼리/스크립트 추가
+#   2. kubectl apply -f custom-metrics-configmap.yaml -n observability
+#   3. 관련 Exporter Pod 재시작: kubectl rollout restart deployment/<exporter-name> -n observability
+#
+# ⚠️ 주의: ConfigMap 크기 제한 1MB
+#          매우 큰 쿼리 파일의 경우 분리 필요
+# =============================================================================
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-custom-queries
+  namespace: observability
+  labels:
+    app: db-monitoring
+    component: custom-metrics
+    db-engine: mysql
+  annotations:
+    description: "Aurora MySQL / RDS MySQL 커스텀 쿼리 설정"
+    last-updated: "2026-08-20"
+data:
+  # mysqld_exporter용 커스텀 쿼리 디렉토리 구조:
+  # /etc/mysql-exporter/custom-queries/hr/ (High Resolution - 매 scrape)
+  # /etc/mysql-exporter/custom-queries/mr/ (Medium Resolution - 10분)
+  # /etc/mysql-exporter/custom-queries/lr/ (Low Resolution - 1시간)
+  
+  # ── High Resolution 쿼리들 ──
+  adaptive_hash.yaml: |
+    mysql_innodb_adaptive_hash_searches:
+      query: "SELECT MAX(CASE WHEN stat_name = 'adaptive_hash_searches' THEN stat_value END) AS searches, MAX(CASE WHEN stat_name = 'adaptive_hash_searches_btree' THEN stat_value END) AS searches_btree FROM information_schema.innodb_metrics WHERE stat_name IN ('adaptive_hash_searches', 'adaptive_hash_searches_btree')"
+      metrics:
+        - searches:
+            usage: "COUNTER"
+            description: "AHI를 통해 성공한 검색 횟수"
+        - searches_btree:
+            usage: "COUNTER"
+            description: "B-tree를 통해 수행된 검색 횟수"
+
+  redo_log.yaml: |
+    mysql_innodb_redo_log:
+      query: "SELECT MAX(CASE WHEN stat_name = 'log_waits' THEN stat_value END) AS log_waits, MAX(CASE WHEN stat_name = 'log_write_requests' THEN stat_value END) AS log_write_requests, MAX(CASE WHEN stat_name = 'os_log_pending_writes' THEN stat_value END) AS os_log_pending_writes, MAX(CASE WHEN stat_name = 'log_lsn_checkpoint_age' THEN stat_value END) AS log_checkpoint_age FROM information_schema.innodb_metrics WHERE stat_name IN ('log_waits', 'log_write_requests', 'os_log_pending_writes', 'log_lsn_checkpoint_age')"
+      metrics:
+        - log_waits:
+            usage: "COUNTER"
+            description: "Redo Log 버퍼 대기 횟수"
+        - log_write_requests:
+            usage: "COUNTER"
+            description: "Redo Log 쓰기 요청 수"
+        - os_log_pending_writes:
+            usage: "GAUGE"
+            description: "OS 대기 중인 쓰기 수"
+        - log_checkpoint_age:
+            usage: "GAUGE"
+            description: "체크포인트 Age"
+
+  lock_waits.yaml: |
+    mysql_innodb_lock_waits:
+      query: "SELECT COUNT(*) AS lock_wait_count, COALESCE(MAX(TIMESTAMPDIFF(SECOND, trx_wait_started, NOW())), 0) AS max_wait_seconds FROM information_schema.innodb_trx WHERE trx_state = 'LOCK WAIT'"
+      metrics:
+        - lock_wait_count:
+            usage: "GAUGE"
+            description: "현재 락 대기 중인 트랜잭션 수"
+        - max_wait_seconds:
+            usage: "GAUGE"
+            description: "최대 락 대기 시간(초)"
+
+  # ── Low Resolution 쿼리 (부하 큼) ──
+  buffer_pool_pages.yaml: |
+    mysql_innodb_buffer_pool_page_distribution:
+      query: "SELECT page_type, COUNT(*) AS pages, SUM(data_size) AS data_bytes FROM information_schema.innodb_buffer_page WHERE page_type != 'UNKNOWN' GROUP BY page_type"
+      metrics:
+        - page_type:
+            usage: "LABEL"
+            description: "페이지 유형"
+        - pages:
+            usage: "GAUGE"
+            description: "페이지 수"
+        - data_bytes:
+            usage: "GAUGE"
+            description: "데이터 크기"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-custom-queries
+  namespace: observability
+  labels:
+    app: db-monitoring
+    component: custom-metrics
+    db-engine: postgresql
+  annotations:
+    description: "Aurora PostgreSQL / RDS PostgreSQL 커스텀 쿼리 설정"
+data:
+  queries.yaml: |
+    pg_stat_slru:
+      query: "SELECT name, blks_hit, blks_read, CASE WHEN (blks_hit + blks_read) > 0 THEN round(blks_hit::numeric / (blks_hit + blks_read), 4) ELSE 1.0 END AS hit_ratio FROM pg_stat_slru"
+      metrics:
+        - name:
+            usage: "LABEL"
+            description: "SLRU 캐시 이름"
+        - blks_hit:
+            usage: "COUNTER"
+            description: "캐시 히트 수"
+        - blks_read:
+            usage: "COUNTER"
+            description: "디스크 읽기 수"
+        - hit_ratio:
+            usage: "GAUGE"
+            description: "캐시 적중률"
+
+    pg_stat_wal:
+      query: "SELECT wal_records, wal_fpi, wal_bytes, wal_buffers_full, wal_write_time AS wal_write_time_ms, wal_sync_time AS wal_sync_time_ms FROM pg_stat_wal"
+      master: true
+      metrics:
+        - wal_records:
+            usage: "COUNTER"
+            description: "WAL 레코드 수"
+        - wal_fpi:
+            usage: "COUNTER"
+            description: "Full Page Image 수"
+        - wal_bytes:
+            usage: "COUNTER"
+            description: "WAL 바이트 수"
+        - wal_buffers_full:
+            usage: "COUNTER"
+            description: "WAL 버퍼 가득 참 횟수"
+        - wal_write_time_ms:
+            usage: "COUNTER"
+            description: "WAL 쓰기 시간(ms)"
+        - wal_sync_time_ms:
+            usage: "COUNTER"
+            description: "WAL sync 시간(ms)"
+
+    pg_autovacuum_progress:
+      query: "SELECT s.relname AS table_name, p.phase, p.heap_blks_total, p.heap_blks_scanned, CASE WHEN p.heap_blks_total > 0 THEN round(p.heap_blks_scanned::numeric / p.heap_blks_total, 4) ELSE 0 END AS progress FROM pg_stat_progress_vacuum p JOIN pg_stat_all_tables s ON s.relid = p.relid"
+      metrics:
+        - table_name:
+            usage: "LABEL"
+            description: "테이블 이름"
+        - phase:
+            usage: "LABEL"
+            description: "VACUUM 단계"
+        - heap_blks_total:
+            usage: "GAUGE"
+            description: "전체 힙 블록"
+        - heap_blks_scanned:
+            usage: "GAUGE"
+            description: "스캔 완료 블록"
+        - progress:
+            usage: "GAUGE"
+            description: "진행률 (0~1)"
+
+    pg_toast_bloat:
+      query: "SELECT c.relname AS table_name, pg_total_relation_size(c.reltoastrelid) AS toast_bytes, CASE WHEN pg_relation_size(c.oid) > 0 THEN round(pg_total_relation_size(c.reltoastrelid)::numeric / pg_relation_size(c.oid), 4) ELSE 0 END AS ratio FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.reltoastrelid != 0 AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND pg_total_relation_size(c.reltoastrelid) > 1048576 ORDER BY toast_bytes DESC LIMIT 20"
+      metrics:
+        - table_name:
+            usage: "LABEL"
+            description: "테이블 이름"
+        - toast_bytes:
+            usage: "GAUGE"
+            description: "TOAST 크기(바이트)"
+        - ratio:
+            usage: "GAUGE"
+            description: "TOAST/메인 비율"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mssql-custom-queries
+  namespace: observability
+  labels:
+    app: db-monitoring
+    component: custom-metrics
+    db-engine: mssql
+  annotations:
+    description: "RDS SQL Server 커스텀 Collector 설정"
+data:
+  custom-collectors.yaml: |
+    # sql_exporter collector 형식
+    # 전체 내용은 mssql-custom-collectors.yaml 참조
+    collector_name: mssql_custom
+    # (ConfigMap 크기 제한으로 핵심 쿼리만 포함, 전체는 별도 파일)
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-custom-scripts
+  namespace: observability
+  labels:
+    app: db-monitoring
+    component: custom-metrics
+    db-engine: redis
+  annotations:
+    description: "ElastiCache Redis/Valkey 커스텀 Lua 스크립트"
+data:
+  custom-metrics.lua: |
+    -- Slow Log 분석 + 키 패턴 카운트 + 메모리 단편화
+    -- 전체 내용은 redis-custom-scripts.lua 참조
+    local result = {}
+    local slowlog_length = redis.call("SLOWLOG", "LEN")
+    table.insert(result, {"redis_custom_slowlog_length", "Slow Log 엔트리 수", "gauge", slowlog_length})
+    
+    local slowlog = redis.call("SLOWLOG", "GET", "10")
+    if #slowlog > 0 then
+      local max_dur = 0
+      for i, entry in ipairs(slowlog) do
+        if entry[3] > max_dur then max_dur = entry[3] end
+      end
+      table.insert(result, {"redis_custom_slowlog_max_duration_us", "최대 실행 시간(us)", "gauge", max_dur})
+    end
+    
+    local info_mem = redis.call("INFO", "memory")
+    local frag = string.match(info_mem, "mem_fragmentation_ratio:([%d%.]+)")
+    if frag then
+      table.insert(result, {"redis_custom_memory_fragmentation_ratio", "메모리 단편화 비율", "gauge", tonumber(frag)})
+    end
+    
+    return result

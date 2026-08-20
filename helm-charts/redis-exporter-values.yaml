@@ -1,0 +1,116 @@
+# =============================================================================
+# Redis (Valkey) Exporter Helm Values
+# =============================================================================
+# 아키텍처: Amazon ElastiCache (Valkey) → Redis Exporter → ADOT Collector → AMP
+# 이미지: oliver006/redis_exporter (Redis/Valkey 호환)
+# 포트: 9121 (기본)
+# =============================================================================
+
+# 레플리카 수
+replicaCount: 1
+
+# 컨테이너 이미지 설정
+image:
+  repository: oliver006/redis_exporter
+  tag: "v1.62.0"
+  pullPolicy: IfNotPresent
+
+# 서비스 설정
+service:
+  type: ClusterIP
+  port: 9121
+  targetPort: 9121
+  annotations:
+    # ADOT Collector가 Kubernetes Service Discovery로 자동 스크래핑
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+    prometheus.io/path: "/metrics"
+
+# Pod annotation — ADOT Collector의 kubernetes-pods scrape job에서 발견
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9121"
+  prometheus.io/path: "/metrics"
+
+# Redis/Valkey 연결 설정
+env:
+  # REDIS_ADDR: ElastiCache Valkey 엔드포인트 (CloudFormation Output에서 가져옴)
+  - name: REDIS_ADDR
+    value: "redis://${ELASTICACHE_VALKEY_ENDPOINT}:${ELASTICACHE_VALKEY_PORT}"
+  # TLS 연결 (ElastiCache는 기본적으로 TLS 사용)
+  - name: REDIS_EXPORTER_IS_CLUSTER
+    value: "true"
+  - name: REDIS_EXPORTER_SKIP_TLS_VERIFICATION
+    value: "true"
+  # 디버그 모드 비활성화
+  - name: REDIS_EXPORTER_DEBUG
+    value: "false"
+  # 연결 타임아웃
+  - name: REDIS_EXPORTER_CONNECTION_TIMEOUT
+    value: "15s"
+
+# 추가 커맨드 인자
+extraArgs:
+  # INFO 섹션 전체 수집
+  - --include-system-metrics
+  # Key space 통계 수집
+  - --check-keys=*
+
+# 리소스 제한
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# 네임스페이스
+namespace: observability
+
+# Node Selector
+nodeSelector:
+  kubernetes.io/os: linux
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  name: redis-exporter
+  annotations: {}
+
+# Health check
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 9121
+  initialDelaySeconds: 15
+  periodSeconds: 15
+  timeoutSeconds: 5
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 9121
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+
+# ── 수집되는 주요 메트릭 ──
+# redis_up                         - Valkey 연결 상태 (1=정상, 0=장애)
+# redis_connected_clients          - 현재 연결된 클라이언트 수
+# redis_used_memory_bytes          - 사용 중인 메모리
+# redis_used_memory_peak_bytes     - 피크 메모리 사용량
+# redis_commands_processed_total   - 처리된 명령 총 수
+# redis_keyspace_hits_total        - 키 히트 수
+# redis_keyspace_misses_total      - 키 미스 수
+# redis_evicted_keys_total         - 에빅션된 키 수
+# redis_connected_slaves           - 연결된 복제본 수
+# redis_replication_offset         - 복제 오프셋
+# redis_slowlog_length             - 슬로우 로그 항목 수
+# redis_latency_percentiles_usec   - 지연시간 백분위

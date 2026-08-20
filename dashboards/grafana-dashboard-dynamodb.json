@@ -1,0 +1,368 @@
+{
+  "__comment": "DynamoDB 통합 모니터링 대시보드 — Recording Rule 메트릭(db: 접두사)만 사용",
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "📊 DynamoDB 테이블 개요",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "RCU 사용률 (%)",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_rcu_utilization:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "percent",
+          "max": 100
+        }
+      }
+    },
+    {
+      "title": "WCU 사용률 (%)",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_wcu_utilization:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "percent",
+          "max": 100
+        }
+      }
+    },
+    {
+      "title": "P99 지연시간 (ms)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_latency_p99:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "title": "스로틀 이벤트 (합계)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_read_throttle_events:by_table{TableName=~\"$table_name\"} + db:dynamodb_write_throttle_events:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "📈 용량 소비 추이",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "collapsed": false
+    },
+    {
+      "title": "Consumed RCU (읽기 용량 소비)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_consumed_rcu:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Consumed"
+        },
+        {
+          "expr": "db:dynamodb_provisioned_rcu:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Provisioned"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*Provisioned.*" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Consumed WCU (쓰기 용량 소비)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_consumed_wcu:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Consumed"
+        },
+        {
+          "expr": "db:dynamodb_provisioned_wcu:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Provisioned"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*Provisioned.*" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "⚠️ 스로틀링 & 에러",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "collapsed": false
+    },
+    {
+      "title": "읽기/쓰기 스로틀 이벤트",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_read_throttle_rate:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Read Throttle"
+        },
+        {
+          "expr": "db:dynamodb_write_throttle_rate:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Write Throttle"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 50
+          },
+          "unit": "ops"
+        }
+      }
+    },
+    {
+      "title": "에러 현황",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_system_errors:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - System Errors"
+        },
+        {
+          "expr": "db:dynamodb_user_errors:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - User Errors"
+        },
+        {
+          "expr": "db:dynamodb_conditional_check_failed:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Conditional Check Failed"
+        },
+        {
+          "expr": "db:dynamodb_transaction_conflict:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Transaction Conflict"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "title": "⏱️ 지연시간",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "collapsed": false
+    },
+    {
+      "title": "요청 지연시간 (Average / P50 / P99)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 26 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_latency_avg:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - Average"
+        },
+        {
+          "expr": "db:dynamodb_latency_p50:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - P50"
+        },
+        {
+          "expr": "db:dynamodb_latency_p99:by_table{TableName=~\"$table_name\"}",
+          "legendFormat": "{{ TableName }} - P99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5 },
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "title": "🏢 계정 레벨",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "collapsed": false
+    },
+    {
+      "title": "계정 용량 사용률",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_account_read_utilization",
+          "legendFormat": "Read Utilization (%)"
+        },
+        {
+          "expr": "db:dynamodb_account_write_utilization",
+          "legendFormat": "Write Utilization (%)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 },
+          "unit": "percent",
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 75 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "계정 최대 용량 한도",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+      "targets": [
+        {
+          "expr": "db:dynamodb_account_max_reads",
+          "legendFormat": "Max Reads"
+        },
+        {
+          "expr": "db:dynamodb_account_max_writes",
+          "legendFormat": "Max Writes"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["dynamodb", "aws", "db-monitoring", "ha"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "AMP", "value": "AMP" }
+      },
+      {
+        "name": "table_name",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(db:dynamodb_consumed_rcu:by_table, TableName)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "refresh": 2
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Asia/Seoul",
+  "title": "DynamoDB 통합 모니터링",
+  "uid": "dynamodb-monitoring-ha",
+  "version": 1
+}

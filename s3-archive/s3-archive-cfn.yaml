@@ -1,0 +1,221 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  AMP 메트릭 S3 아카이브 인프라
+  - S3 버킷 (Lifecycle Policy: Standard → Glacier Instant → Deep Archive)
+  - Lambda 함수 (매일 AMP 메트릭을 Parquet으로 내보내기)
+  - EventBridge Rule (매일 UTC 02:00 트리거)
+  - IAM Role (AMP 읽기 + S3 쓰기 권한)
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: integrated-db-monitoring
+    Description: 환경 이름 (리소스 네이밍에 사용)
+
+  AMPWorkspaceId:
+    Type: String
+    Description: Amazon Managed Prometheus 워크스페이스 ID
+
+  ScheduleExpression:
+    Type: String
+    Default: 'cron(0 2 * * ? *)'
+    Description: Lambda 실행 스케줄 (기본: 매일 UTC 02:00 = KST 11:00)
+
+  RetentionExportDays:
+    Type: Number
+    Default: 1
+    Description: 내보내기 대상 (N일 전 데이터). 기본 1 = 전날.
+
+  GlacierTransitionDays:
+    Type: Number
+    Default: 90
+    Description: S3 Standard → Glacier Instant Retrieval 전환 일수
+
+  DeepArchiveTransitionDays:
+    Type: Number
+    Default: 365
+    Description: Glacier Instant → Glacier Deep Archive 전환 일수
+
+  ExpirationDays:
+    Type: Number
+    Default: 1825
+    Description: 데이터 만료/삭제 일수 (기본 5년)
+
+Resources:
+  # ─────────────────────────────────────────────────────────────────────────
+  # S3 버킷 (메트릭 아카이브 저장소)
+  # ─────────────────────────────────────────────────────────────────────────
+  MetricsArchiveBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-metrics-archive-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          # 메트릭 데이터 Lifecycle
+          - Id: MetricsLifecycle
+            Status: Enabled
+            Prefix: 'metrics/'
+            Transitions:
+              # 90일 후: S3 Standard → Glacier Instant Retrieval
+              - TransitionInDays: !Ref GlacierTransitionDays
+                StorageClass: GLACIER_IR
+              # 365일 후: Glacier Instant → Glacier Deep Archive
+              - TransitionInDays: !Ref DeepArchiveTransitionDays
+                StorageClass: DEEP_ARCHIVE
+            # 5년 후: 삭제
+            ExpirationInDays: !Ref ExpirationDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+          # 불완전 멀티파트 업로드 정리
+          - Id: CleanupIncomplete
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Project
+          Value: !Ref EnvironmentName
+        - Key: Purpose
+          Value: metrics-archive
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Lambda 실행 IAM Role
+  # ─────────────────────────────────────────────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-metrics-archive-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        # AMP 읽기 권한
+        - PolicyName: AMPReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aps:QueryMetrics
+                  - aps:GetMetricMetadata
+                  - aps:GetLabels
+                  - aps:GetSeries
+                Resource: !Sub 'arn:aws:aps:${AWS::Region}:${AWS::AccountId}:workspace/${AMPWorkspaceId}'
+        # S3 쓰기 권한
+        - PolicyName: S3WriteAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectTagging
+                Resource: !Sub '${MetricsArchiveBucket.Arn}/metrics/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt MetricsArchiveBucket.Arn
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Lambda 함수
+  # ─────────────────────────────────────────────────────────────────────────
+  MetricsArchiveLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${EnvironmentName}-metrics-archive'
+      Description: AMP 메트릭을 S3에 Parquet 형식으로 일별 아카이브
+      Runtime: python3.12
+      Handler: s3-archive-lambda.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 900  # 15분 (최대)
+      MemorySize: 512
+      Environment:
+        Variables:
+          AMP_WORKSPACE_ID: !Ref AMPWorkspaceId
+          BUCKET_NAME: !Ref MetricsArchiveBucket
+          AWS_REGION_NAME: !Ref AWS::Region
+          RETENTION_EXPORT_DAYS: !Ref RetentionExportDays
+      Layers:
+        # PyArrow + Pandas Layer (Parquet 생성용)
+        # AWS 제공 공개 Layer 또는 커스텀 빌드 필요
+        - !Sub 'arn:aws:lambda:${AWS::Region}:336392948345:layer:AWSSDKPandas-Python312:14'
+      Tags:
+        - Key: Project
+          Value: !Ref EnvironmentName
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # EventBridge Rule (매일 실행)
+  # ─────────────────────────────────────────────────────────────────────────
+  DailyArchiveRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${EnvironmentName}-metrics-archive-daily'
+      Description: 매일 UTC 02:00에 메트릭 아카이브 Lambda 실행
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: MetricsArchiveLambda
+          Arn: !GetAtt MetricsArchiveLambda.Arn
+
+  # Lambda 실행 권한 (EventBridge → Lambda)
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MetricsArchiveLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyArchiveRule.Arn
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # CloudWatch Alarm (Lambda 실패 감지)
+  # ─────────────────────────────────────────────────────────────────────────
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-metrics-archive-errors'
+      AlarmDescription: 메트릭 아카이브 Lambda 실행 실패 알림
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 86400  # 24시간
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MetricsArchiveLambda
+
+Outputs:
+  ArchiveBucketName:
+    Description: 메트릭 아카이브 S3 버킷 이름
+    Value: !Ref MetricsArchiveBucket
+    Export:
+      Name: !Sub '${EnvironmentName}-archive-bucket'
+
+  ArchiveBucketArn:
+    Description: 메트릭 아카이브 S3 버킷 ARN
+    Value: !GetAtt MetricsArchiveBucket.Arn
+
+  LambdaFunctionArn:
+    Description: 아카이브 Lambda 함수 ARN
+    Value: !GetAtt MetricsArchiveLambda.Arn
+
+  LambdaFunctionName:
+    Description: 아카이브 Lambda 함수 이름
+    Value: !Ref MetricsArchiveLambda

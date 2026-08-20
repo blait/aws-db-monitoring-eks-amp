@@ -1,0 +1,208 @@
+# =============================================================================
+# 통합 DB 자동 디스커버리 CronJob
+# Aurora + RDS + ElastiCache를 주기적으로 스캔하여 Exporter를 자동 관리합니다.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-discovery-config
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: config
+data:
+  # 디스커버리 동작 설정
+  NAMESPACE: "observability"
+  LOG_LEVEL: "INFO"
+  DRY_RUN: "false"
+  
+  # 태그 기반 필터링 (monitoring:enabled 태그가 있는 리소스만 대상)
+  TAG_FILTER_ENABLED: "false"
+  TAG_FILTER_KEY: "monitoring"
+  TAG_FILTER_VALUE: "enabled"
+  
+  # VPC 필터링 (EKS와 같은 VPC 내 리소스만)
+  VPC_FILTER_ENABLED: "false"
+  TARGET_VPC_ID: ""
+  
+  # DB 접속 시크릿 이름 (Exporter가 DB에 연결할 때 사용)
+  MYSQL_SECRET_NAME: "db-monitoring-mysql-credentials"
+  POSTGRESQL_SECRET_NAME: "db-monitoring-postgresql-credentials"
+  MSSQL_SECRET_NAME: "db-monitoring-mssql-credentials"
+
+---
+# =============================================================================
+# DB 접속 시크릿 (모니터링 전용 계정)
+# 실제 환경에서는 AWS Secrets Manager 또는 External Secrets Operator 사용 권장
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-monitoring-mysql-credentials
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: credentials
+type: Opaque
+stringData:
+  # MySQL/Aurora MySQL 모니터링 계정
+  username: "monitoring"
+  password: "MonitoringPass123!"
+  # mysqld_exporter용 DSN 형식
+  DATA_SOURCE_NAME: "monitoring:MonitoringPass123!@tcp(PLACEHOLDER:3306)/"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-monitoring-postgresql-credentials
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: credentials
+type: Opaque
+stringData:
+  # PostgreSQL/Aurora PostgreSQL 모니터링 계정
+  username: "monitoring"
+  password: "MonitoringPass123!"
+  # postgres_exporter용 DSN 형식
+  DATA_SOURCE_NAME: "postgresql://monitoring:MonitoringPass123!@PLACEHOLDER:5432/postgres?sslmode=require"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-monitoring-mssql-credentials
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: credentials
+type: Opaque
+stringData:
+  # SQL Server 모니터링 계정
+  username: "monitoring"
+  password: "MonitoringPass123!"
+  MSSQL_HOST: "PLACEHOLDER"
+  MSSQL_PORT: "1433"
+  MSSQL_USER: "monitoring"
+  MSSQL_PASSWORD: "MonitoringPass123!"
+
+---
+# =============================================================================
+# CronJob: 5분 주기로 디스커버리 실행
+# =============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-auto-discovery
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: cronjob
+  annotations:
+    description: "Aurora, RDS, ElastiCache 인스턴스를 자동 감지하여 Exporter를 관리합니다"
+spec:
+  # 5분 주기 실행 (조절 가능: "*/1 * * * *" = 1분, "0 * * * *" = 매시간)
+  schedule: "*/5 * * * *"
+  # 이전 Job이 아직 실행 중이면 새 Job 생성하지 않음
+  concurrencyPolicy: Forbid
+  # 실패한 Job 히스토리 유지 수
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      # Job 타임아웃 (5분)
+      activeDeadlineSeconds: 300
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: db-discovery
+            component: job
+        spec:
+          serviceAccountName: db-discovery-sa
+          restartPolicy: OnFailure
+          containers:
+            - name: discovery
+              # AWS CLI + kubectl + jq가 포함된 이미지
+              image: amazon/aws-cli:2.15.0
+              command:
+                - /bin/bash
+                - /scripts/db-discovery-updated.sh
+              envFrom:
+                - configMapRef:
+                    name: db-discovery-config
+              env:
+                - name: TEMPLATE_DIR
+                  value: "/templates"
+              volumeMounts:
+                - name: discovery-script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: exporter-templates
+                  mountPath: /templates
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          volumes:
+            - name: discovery-script
+              configMap:
+                name: db-discovery-script
+                defaultMode: 0755
+            - name: exporter-templates
+              configMap:
+                name: db-exporter-templates
+
+---
+# =============================================================================
+# 디스커버리 스크립트를 ConfigMap으로 마운트
+# (실제 배포 시 db-discovery-updated.sh 내용을 여기에 넣거나,
+#  Docker 이미지에 포함시킵니다)
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-discovery-script
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: script
+data:
+  db-discovery-updated.sh: |
+    #!/bin/bash
+    # 이 파일은 db-discovery-updated.sh 의 내용이 들어갑니다.
+    # 실제 배포 시: kubectl create configmap db-discovery-script \
+    #   --from-file=db-discovery-updated.sh=./db-discovery-updated.sh
+    echo "Discovery script placeholder - replace with actual script"
+
+---
+# =============================================================================
+# Exporter 템플릿을 ConfigMap으로 마운트
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-exporter-templates
+  namespace: observability
+  labels:
+    app: db-discovery
+    component: templates
+data:
+  # 각 Exporter 템플릿 파일은 별도 ConfigMap 또는 아래에 inline으로 포함
+  # 실제 배포 시: kubectl create configmap db-exporter-templates \
+  #   --from-file=mysql-exporter-template.yaml \
+  #   --from-file=postgresql-exporter-template.yaml \
+  #   --from-file=mssql-exporter-template.yaml \
+  #   --from-file=redis-exporter-template.yaml
+  placeholder: "true"
+
+---
+# =============================================================================
+# 수동 트리거용 Job (디스커버리를 즉시 실행하고 싶을 때)
+# kubectl create job --from=cronjob/db-auto-discovery manual-discovery -n observability
+# =============================================================================

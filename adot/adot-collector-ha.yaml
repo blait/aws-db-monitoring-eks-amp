@@ -1,0 +1,197 @@
+# =============================================================================
+# ADOT Collector 설정 — HA Exporter 환경 + 비용 최적화
+# =============================================================================
+#
+# 💡 핵심:
+#   - 모든 Exporter Pod (replicas:2)을 scrape
+#   - metric_relabel_configs로 불필요한 메트릭/라벨 제거 → AMP 비용 절약
+#   - pod 라벨은 유지 (Recording Rules에서 dedup 시 사용)
+#   - db_instance 라벨로 DB별 그룹핑
+#
+# 💰 비용 최적화 효과:
+#   - go_*, process_* 메트릭 drop → 시계열 수 ~40% 감소
+#   - 불필요한 라벨 제거 → 카디널리티 ~30% 감소
+#   - 총 AMP 저장 비용: raw 2배 수집이지만 drop 효과로 실질 ~1.4배 수준
+# =============================================================================
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: adot-collector
+  namespace: observability
+  labels:
+    app: adot-collector
+spec:
+  mode: deployment
+  replicas: 2
+  serviceAccount: adot-collector
+  image: public.ecr.aws/aws-observability/aws-otel-collector:v0.39.0
+
+  # ADOT Collector 자체 HA: 2개 인스턴스
+  # Target Allocator로 scrape target 분산 (중복 scrape 방지)
+  targetAllocator:
+    enabled: true
+    allocationStrategy: consistent-hashing
+    serviceAccount: adot-collector
+    prometheusCR:
+      enabled: false
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+  config: |
+    receivers:
+      prometheus:
+        config:
+          global:
+            scrape_interval: 30s
+            evaluation_interval: 30s
+
+          scrape_configs:
+            # ─────────────────────────────────────────────────────────────────
+            # Job: 자동 디스커버리된 모든 DB Exporter (HA replicas 포함)
+            # ─────────────────────────────────────────────────────────────────
+            - job_name: 'db-exporters'
+              kubernetes_sd_configs:
+                - role: pod
+                  namespaces:
+                    names:
+                      - observability
+
+              relabel_configs:
+                # 1. prometheus.io/scrape: "true" 인 Pod만
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: true
+
+                # 2. auto-discovery가 관리하는 Pod만
+                - source_labels: [__meta_kubernetes_pod_label_db_discovery_managed_by]
+                  action: keep
+                  regex: auto-discovery
+
+                # 3. metrics 경로 설정
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  action: replace
+                  target_label: __metrics_path__
+                  regex: (.+)
+
+                # 4. 포트 설정
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
+
+                # ─── 유용한 라벨 추가 ───
+
+                # DB 인스턴스 식별자 (Recording Rules의 핵심 group-by 키)
+                - source_labels: [__meta_kubernetes_pod_label_db_instance]
+                  action: replace
+                  target_label: db_instance
+
+                # DB 엔진 종류 (mysql, postgresql, sqlserver, redis)
+                - source_labels: [__meta_kubernetes_pod_annotation_db_discovery_engine]
+                  action: replace
+                  target_label: db_engine
+
+                # DB 클러스터 ID (Aurora 클러스터 구분)
+                - source_labels: [__meta_kubernetes_pod_annotation_db_discovery_cluster_id]
+                  action: replace
+                  target_label: db_cluster
+
+                # DB 엔드포인트 (실제 접속 주소)
+                - source_labels: [__meta_kubernetes_pod_annotation_db_discovery_endpoint]
+                  action: replace
+                  target_label: db_endpoint
+
+                # Exporter 종류 (app 라벨)
+                - source_labels: [__meta_kubernetes_pod_label_app]
+                  action: replace
+                  target_label: exporter_type
+
+                # Pod 이름 (HA dedup에서 pod 구분에 사용)
+                - source_labels: [__meta_kubernetes_pod_name]
+                  action: replace
+                  target_label: pod
+
+                # Namespace
+                - source_labels: [__meta_kubernetes_namespace]
+                  action: replace
+                  target_label: namespace
+
+              # ─── 비용 최적화: 불필요한 메트릭/라벨 제거 ───
+              metric_relabel_configs:
+                # [비용 절약 1] Go 런타임 메트릭 제거 (exporter 자체 메트릭, DB와 무관)
+                - source_labels: [__name__]
+                  regex: 'go_.*'
+                  action: drop
+
+                # [비용 절약 2] Process 메트릭 제거 (exporter 프로세스 정보, 불필요)
+                - source_labels: [__name__]
+                  regex: 'process_.*'
+                  action: drop
+
+                # [비용 절약 3] Prometheus 내부 메트릭 제거
+                - source_labels: [__name__]
+                  regex: 'promhttp_.*'
+                  action: drop
+
+                # [비용 절약 4] 불필요한 고카디널리티 라벨 제거
+                # (instance 라벨은 Pod IP:Port → 카디널리티만 높이고 가치 없음)
+                - regex: 'instance'
+                  action: labeldrop
+
+                # [비용 절약 5] job 라벨 단순화 (이미 exporter_type으로 구분)
+                - regex: 'job'
+                  action: labeldrop
+
+    processors:
+      batch:
+        timeout: 30s
+        send_batch_size: 1000
+        send_batch_max_size: 1500
+
+      memory_limiter:
+        check_interval: 5s
+        limit_mib: 400
+        spike_limit_mib: 100
+
+    exporters:
+      prometheusremotewrite:
+        endpoint: "${AMP_REMOTE_WRITE_ENDPOINT}"
+        auth:
+          authenticator: sigv4auth
+        resource_to_telemetry_conversion:
+          enabled: true
+
+    extensions:
+      sigv4auth:
+        region: "${AWS_REGION}"
+        service: "aps"
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [sigv4auth, health_check]
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite]
+
+---
+# ADOT Collector PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: adot-collector-pdb
+  namespace: observability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: adot-collector-collector

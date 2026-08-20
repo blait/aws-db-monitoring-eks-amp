@@ -1,0 +1,913 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "AWS 데이터베이스 CloudWatch 메트릭 통합 대시보드 - Aurora MySQL, Aurora PostgreSQL, RDS SQL Server, ElastiCache",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "title": "🔶 Aurora MySQL - CloudWatch 메트릭",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "title": "Aurora MySQL - CPU Utilization",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "{{DBInstanceIdentifier}}",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${mysql_cluster}"
+            ]
+          },
+          "expression": "",
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "id": 2,
+      "title": "Aurora MySQL - Freeable Memory",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "{{DBInstanceIdentifier}}",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${mysql_cluster}"
+            ]
+          },
+          "metricName": "FreeableMemory",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "iops"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "id": 3,
+      "title": "Aurora MySQL - Read/Write IOPS",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "Read IOPS",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${mysql_cluster}"
+            ]
+          },
+          "metricName": "ReadIOPS",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        },
+        {
+          "alias": "Write IOPS",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${mysql_cluster}"
+            ]
+          },
+          "metricName": "WriteIOPS",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "B",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 9
+      },
+      "id": 4,
+      "title": "Aurora MySQL - Database Connections",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "{{DBInstanceIdentifier}}",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${mysql_cluster}"
+            ]
+          },
+          "metricName": "DatabaseConnections",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 9
+      },
+      "id": 5,
+      "title": "Aurora MySQL - Read/Write Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "Read Latency",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${mysql_cluster}"
+            ]
+          },
+          "metricName": "ReadLatency",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        },
+        {
+          "alias": "Write Latency",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${mysql_cluster}"
+            ]
+          },
+          "metricName": "WriteLatency",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "B",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 9
+      },
+      "id": 6,
+      "title": "Aurora MySQL - Aurora Replica Lag",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "Replica Lag (ms)",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${mysql_cluster}"
+            ]
+          },
+          "metricName": "AuroraReplicaLag",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 200,
+      "title": "🔷 Aurora PostgreSQL - CloudWatch 메트릭",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 18
+      },
+      "id": 7,
+      "title": "Aurora PostgreSQL - CPU Utilization",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "{{DBInstanceIdentifier}}",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${postgresql_cluster}"
+            ]
+          },
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 18
+      },
+      "id": 8,
+      "title": "Aurora PostgreSQL - Freeable Memory",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "{{DBInstanceIdentifier}}",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${postgresql_cluster}"
+            ]
+          },
+          "metricName": "FreeableMemory",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 18
+      },
+      "id": 9,
+      "title": "Aurora PostgreSQL - Transaction Commits/Rollbacks",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "Commits",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${postgresql_cluster}"
+            ]
+          },
+          "metricName": "CommitThroughput",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        },
+        {
+          "alias": "Rollbacks",
+          "dimensions": {
+            "DBClusterIdentifier": [
+              "${postgresql_cluster}"
+            ]
+          },
+          "metricName": "RollbackThroughput",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "B",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 300,
+      "title": "🟢 RDS SQL Server - CloudWatch 메트릭",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 27
+      },
+      "id": 10,
+      "title": "SQL Server - CPU Utilization",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "CPU %",
+          "dimensions": {
+            "DBInstanceIdentifier": [
+              "${sqlserver_instance}"
+            ]
+          },
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 27
+      },
+      "id": 11,
+      "title": "SQL Server - Freeable Memory / Free Storage",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "Freeable Memory",
+          "dimensions": {
+            "DBInstanceIdentifier": [
+              "${sqlserver_instance}"
+            ]
+          },
+          "metricName": "FreeableMemory",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        },
+        {
+          "alias": "Free Storage",
+          "dimensions": {
+            "DBInstanceIdentifier": [
+              "${sqlserver_instance}"
+            ]
+          },
+          "metricName": "FreeStorageSpace",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "B",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "iops"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 27
+      },
+      "id": 12,
+      "title": "SQL Server - Read/Write IOPS",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "Read IOPS",
+          "dimensions": {
+            "DBInstanceIdentifier": [
+              "${sqlserver_instance}"
+            ]
+          },
+          "metricName": "ReadIOPS",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        },
+        {
+          "alias": "Write IOPS",
+          "dimensions": {
+            "DBInstanceIdentifier": [
+              "${sqlserver_instance}"
+            ]
+          },
+          "metricName": "WriteIOPS",
+          "namespace": "AWS/RDS",
+          "period": "300",
+          "refId": "B",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "id": 400,
+      "title": "🔴 ElastiCache Valkey - CloudWatch 메트릭",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 36
+      },
+      "id": 13,
+      "title": "ElastiCache - CPU Utilization / Engine CPU",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "CPU Utilization",
+          "dimensions": {
+            "CacheClusterId": [
+              "${cache_cluster}"
+            ]
+          },
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/ElastiCache",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        },
+        {
+          "alias": "Engine CPU",
+          "dimensions": {
+            "CacheClusterId": [
+              "${cache_cluster}"
+            ]
+          },
+          "metricName": "EngineCPUUtilization",
+          "namespace": "AWS/ElastiCache",
+          "period": "300",
+          "refId": "B",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 36
+      },
+      "id": 14,
+      "title": "ElastiCache - Memory Usage",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "Used Memory",
+          "dimensions": {
+            "CacheClusterId": [
+              "${cache_cluster}"
+            ]
+          },
+          "metricName": "BytesUsedForCache",
+          "namespace": "AWS/ElastiCache",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Average"
+          ]
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 36
+      },
+      "id": 15,
+      "title": "ElastiCache - Cache Hit/Miss Rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "Cache Hits",
+          "dimensions": {
+            "CacheClusterId": [
+              "${cache_cluster}"
+            ]
+          },
+          "metricName": "CacheHits",
+          "namespace": "AWS/ElastiCache",
+          "period": "300",
+          "refId": "A",
+          "region": "${region}",
+          "statistics": [
+            "Sum"
+          ]
+        },
+        {
+          "alias": "Cache Misses",
+          "dimensions": {
+            "CacheClusterId": [
+              "${cache_cluster}"
+            ]
+          },
+          "metricName": "CacheMisses",
+          "namespace": "AWS/ElastiCache",
+          "period": "300",
+          "refId": "B",
+          "region": "${region}",
+          "statistics": [
+            "Sum"
+          ]
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "aws",
+    "cloudwatch",
+    "database",
+    "aurora",
+    "rds",
+    "elasticache"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "label": "Region",
+        "name": "region",
+        "options": [],
+        "query": "ap-northeast-2",
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "label": "MySQL Cluster",
+        "name": "mysql_cluster",
+        "query": {
+          "dimensions": {},
+          "metricName": "",
+          "namespace": "AWS/RDS",
+          "queryType": "dimensionValues",
+          "dimensionKey": "DBClusterIdentifier",
+          "region": "$region"
+        },
+        "type": "query",
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cloudwatch"
+        }
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "label": "PostgreSQL Cluster",
+        "name": "postgresql_cluster",
+        "query": {
+          "dimensions": {},
+          "metricName": "",
+          "namespace": "AWS/RDS",
+          "queryType": "dimensionValues",
+          "dimensionKey": "DBClusterIdentifier",
+          "region": "$region"
+        },
+        "type": "query",
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cloudwatch"
+        }
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "label": "SQL Server Instance",
+        "name": "sqlserver_instance",
+        "query": {
+          "dimensions": {},
+          "metricName": "",
+          "namespace": "AWS/RDS",
+          "queryType": "dimensionValues",
+          "dimensionKey": "DBInstanceIdentifier",
+          "region": "$region"
+        },
+        "type": "query",
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cloudwatch"
+        }
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "label": "Cache Cluster",
+        "name": "cache_cluster",
+        "query": {
+          "dimensions": {},
+          "metricName": "",
+          "namespace": "AWS/ElastiCache",
+          "queryType": "dimensionValues",
+          "dimensionKey": "CacheClusterId",
+          "region": "$region"
+        },
+        "type": "query",
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cloudwatch"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "Asia/Seoul",
+  "title": "AWS Database CloudWatch 통합 모니터링",
+  "uid": "aws-db-cloudwatch-monitoring",
+  "version": 1
+}

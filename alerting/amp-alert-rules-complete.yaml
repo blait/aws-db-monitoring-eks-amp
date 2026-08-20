@@ -1,0 +1,418 @@
+# =============================================================================
+# AMP Alert Rules — 전체 (인프라 + DB 성능 + DynamoDB)
+# =============================================================================
+#
+# 기존 Exporter health alert + 모든 DB 엔진별 성능 알림 포함.
+# 멀티 어카운트 라벨(account_id, region) 포함.
+#
+# 적용 방법:
+#   aws amp create-rule-groups-namespace \
+#     --workspace-id $AMP_WORKSPACE_ID \
+#     --name "db-monitoring-alerts" \
+#     --data fileb://amp-alert-rules-complete.yaml
+# =============================================================================
+
+groups:
+  # ═══════════════════════════════════════════════════════════════════
+  # 인프라 / Exporter 상태 알람
+  # ═══════════════════════════════════════════════════════════════════
+  - name: exporter_infrastructure
+    rules:
+      # Exporter Pod 1분 이상 다운
+      - alert: ExporterDown
+        expr: exporter:up:by_instance == 0
+        for: 1m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "DB Exporter 다운: {{ $labels.db_instance }}"
+          description: "{{ $labels.exporter_type }} exporter가 1분 이상 메트릭을 수집하지 못하고 있습니다. (계정: {{ $labels.account_id }}, 리전: {{ $labels.region }})"
+          runbook_url: "https://wiki.internal/runbook/exporter-down"
+          current_value: "{{ $value }}"
+          threshold: "1 (up)"
+
+      # 동일 DB의 모든 Exporter Replica 다운 (HA 실패)
+      - alert: AllReplicasDown
+        expr: |
+          count by (db_instance, account_id, region) (up{job="db-exporters-auto-discovery"} == 1) == 0
+          and
+          count by (db_instance, account_id, region) (up{job="db-exporters-auto-discovery"}) > 0
+        for: 30s
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "🚨 모든 Exporter Replica 다운: {{ $labels.db_instance }}"
+          description: "{{ $labels.db_instance }}의 모든 Exporter Pod이 다운되었습니다. 메트릭 수집이 완전히 중단됩니다."
+          runbook_url: "https://wiki.internal/runbook/all-replicas-down"
+
+      # 5분 이상 메트릭 수집 없음
+      - alert: MetricGapDetected
+        expr: |
+          time() - max by (db_instance, account_id, region) (
+            timestamp(up{job="db-exporters-auto-discovery"})
+          ) > 300
+        for: 0m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "메트릭 갭 발생: {{ $labels.db_instance }}"
+          description: "{{ $labels.db_instance }}에서 5분 이상 메트릭 수집이 되지 않고 있습니다."
+          runbook_url: "https://wiki.internal/runbook/metric-gap"
+
+      # ADOT Collector 다운
+      - alert: ADOTCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "🚨 ADOT Collector 다운"
+          description: "ADOT Collector가 30초 이상 응답하지 않습니다. 전체 메트릭 전달이 중단될 수 있습니다."
+          runbook_url: "https://wiki.internal/runbook/adot-collector-down"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MySQL 성능 알람
+  # ═══════════════════════════════════════════════════════════════════
+  - name: mysql_performance
+    rules:
+      # 연결 수 임계값 초과
+      - alert: MySQLConnectionsHigh
+        expr: db:mysql_connections:by_instance > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: mysql
+          db_engine: mysql
+        annotations:
+          summary: "MySQL 연결 수 높음: {{ $labels.db_instance }}"
+          description: "현재 {{ $value }}개 연결. 임계값: 100"
+          current_value: "{{ $value }}"
+          threshold: "100"
+          runbook_url: "https://wiki.internal/runbook/mysql-connections-high"
+
+      # 슬로우 쿼리 급증
+      - alert: MySQLSlowQueriesSpike
+        expr: db:mysql_slow_queries_rate:by_instance > 5
+        for: 3m
+        labels:
+          severity: warning
+          category: mysql
+          db_engine: mysql
+        annotations:
+          summary: "MySQL 슬로우 쿼리 급증: {{ $labels.db_instance }}"
+          description: "초당 {{ $value }}개의 슬로우 쿼리가 발생하고 있습니다."
+          current_value: "{{ $value }}/s"
+          threshold: "5/s"
+
+      # Replication Lag
+      - alert: MySQLReplicationLag
+        expr: db:mysql_replication_lag:by_instance > 30
+        for: 2m
+        labels:
+          severity: critical
+          category: mysql
+          db_engine: mysql
+        annotations:
+          summary: "🚨 MySQL 복제 지연: {{ $labels.db_instance }}"
+          description: "복제 지연이 {{ $value }}초입니다. 30초 임계값을 초과했습니다."
+          current_value: "{{ $value }}초"
+          threshold: "30초"
+          runbook_url: "https://wiki.internal/runbook/mysql-replication-lag"
+
+      # Buffer Pool Hit Ratio 저하
+      - alert: MySQLBufferPoolHitLow
+        expr: db:mysql_buffer_pool_hit_ratio:by_instance < 0.95
+        for: 10m
+        labels:
+          severity: warning
+          category: mysql
+          db_engine: mysql
+        annotations:
+          summary: "MySQL 버퍼풀 적중률 저하: {{ $labels.db_instance }}"
+          description: "버퍼풀 적중률이 {{ $value | humanizePercentage }}입니다. 95% 미만으로 디스크 I/O가 증가하고 있습니다."
+          current_value: "{{ $value | humanizePercentage }}"
+          threshold: "95%"
+
+      # Threads Running 높음
+      - alert: MySQLThreadsRunningHigh
+        expr: db:mysql_threads_running:by_instance > 50
+        for: 3m
+        labels:
+          severity: critical
+          category: mysql
+          db_engine: mysql
+        annotations:
+          summary: "🚨 MySQL 활성 스레드 높음: {{ $labels.db_instance }}"
+          description: "현재 {{ $value }}개 스레드가 실행 중입니다. DB 부하가 매우 높습니다."
+          current_value: "{{ $value }}"
+          threshold: "50"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PostgreSQL 성능 알람
+  # ═══════════════════════════════════════════════════════════════════
+  - name: postgresql_performance
+    rules:
+      # 연결 수 높음
+      - alert: PGConnectionsHigh
+        expr: db:pg_total_connections:by_instance > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: postgresql
+          db_engine: postgresql
+        annotations:
+          summary: "PostgreSQL 연결 수 높음: {{ $labels.db_instance }}"
+          description: "현재 {{ $value }}개 연결. max_connections에 근접할 수 있습니다."
+          current_value: "{{ $value }}"
+          threshold: "100"
+
+      # Dead Tuples 누적
+      - alert: PGDeadTuplesHigh
+        expr: db:pg_dead_tuples:by_instance > 100000
+        for: 15m
+        labels:
+          severity: warning
+          category: postgresql
+          db_engine: postgresql
+        annotations:
+          summary: "PostgreSQL Dead Tuples 누적: {{ $labels.db_instance }}"
+          description: "Dead tuples가 {{ $value }}개로 누적되었습니다. VACUUM이 필요할 수 있습니다."
+          current_value: "{{ $value }}"
+          threshold: "100000"
+          runbook_url: "https://wiki.internal/runbook/pg-vacuum"
+
+      # Replication Lag
+      - alert: PGReplicationLag
+        expr: db:pg_replication_lag_bytes:by_instance > 104857600
+        for: 2m
+        labels:
+          severity: critical
+          category: postgresql
+          db_engine: postgresql
+        annotations:
+          summary: "🚨 PostgreSQL 복제 지연: {{ $labels.db_instance }}"
+          description: "복제 지연이 {{ $value | humanize1024 }}B입니다. 100MB를 초과했습니다."
+          current_value: "{{ $value | humanize1024 }}B"
+          threshold: "100MB"
+
+      # 캐시 적중률 저하
+      - alert: PGCacheHitLow
+        expr: db:pg_cache_hit_ratio:by_instance < 0.95
+        for: 10m
+        labels:
+          severity: warning
+          category: postgresql
+          db_engine: postgresql
+        annotations:
+          summary: "PostgreSQL 캐시 적중률 저하: {{ $labels.db_instance }}"
+          description: "캐시 적중률이 {{ $value | humanizePercentage }}입니다. shared_buffers 증가를 고려하세요."
+          current_value: "{{ $value | humanizePercentage }}"
+          threshold: "95%"
+
+      # Long Running Query (10분 이상)
+      - alert: PGLongRunningQuery
+        expr: db:pg_active_connections:by_instance > 0 and db:pg_longest_query_seconds:by_instance > 600
+        for: 0m
+        labels:
+          severity: warning
+          category: postgresql
+          db_engine: postgresql
+        annotations:
+          summary: "PostgreSQL 장시간 쿼리: {{ $labels.db_instance }}"
+          description: "10분 이상 실행 중인 쿼리가 있습니다. 잠금/블로킹을 확인하세요."
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MSSQL 성능 알람
+  # ═══════════════════════════════════════════════════════════════════
+  - name: mssql_performance
+    rules:
+      # 연결 수 높음
+      - alert: MSSQLConnectionsHigh
+        expr: db:mssql_connections:by_instance > 200
+        for: 5m
+        labels:
+          severity: warning
+          category: mssql
+          db_engine: sqlserver
+        annotations:
+          summary: "SQL Server 연결 수 높음: {{ $labels.db_instance }}"
+          description: "현재 {{ $value }}개 연결."
+          current_value: "{{ $value }}"
+          threshold: "200"
+
+      # Batch Requests 급증
+      - alert: MSSQLBatchRequestsSpike
+        expr: db:mssql_batch_requests_rate:by_instance > 5000
+        for: 5m
+        labels:
+          severity: warning
+          category: mssql
+          db_engine: sqlserver
+        annotations:
+          summary: "SQL Server Batch Requests 급증: {{ $labels.db_instance }}"
+          description: "초당 {{ $value }}개 배치 요청. 부하가 높습니다."
+          current_value: "{{ $value }}/s"
+          threshold: "5000/s"
+
+      # Page Life Expectancy 저하
+      - alert: MSSQLPageLifeExpectancyLow
+        expr: db:mssql_page_life_expectancy:by_instance < 300
+        for: 5m
+        labels:
+          severity: critical
+          category: mssql
+          db_engine: sqlserver
+        annotations:
+          summary: "🚨 SQL Server PLE 저하: {{ $labels.db_instance }}"
+          description: "Page Life Expectancy가 {{ $value }}초입니다. 메모리 부족으로 버퍼 캐시가 플러시되고 있습니다."
+          current_value: "{{ $value }}초"
+          threshold: "300초"
+          runbook_url: "https://wiki.internal/runbook/mssql-ple-low"
+
+      # Buffer Cache Hit Ratio 저하
+      - alert: MSSQLBufferCacheHitLow
+        expr: db:mssql_buffer_cache_hit_ratio:by_instance < 0.95
+        for: 10m
+        labels:
+          severity: warning
+          category: mssql
+          db_engine: sqlserver
+        annotations:
+          summary: "SQL Server 버퍼 캐시 적중률 저하: {{ $labels.db_instance }}"
+          description: "버퍼 캐시 적중률이 {{ $value | humanizePercentage }}입니다."
+          current_value: "{{ $value | humanizePercentage }}"
+          threshold: "95%"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Redis / Valkey 성능 알람
+  # ═══════════════════════════════════════════════════════════════════
+  - name: redis_performance
+    rules:
+      # 메모리 사용률 높음
+      - alert: RedisMemoryHigh
+        expr: |
+          db:redis_memory_used_bytes:by_instance / 
+          db:redis_memory_max_bytes:by_instance > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          category: redis
+          db_engine: redis
+        annotations:
+          summary: "Redis 메모리 사용률 높음: {{ $labels.db_instance }}"
+          description: "메모리 사용률이 80%를 초과했습니다. Eviction이 시작될 수 있습니다."
+          current_value: "{{ $value | humanizePercentage }}"
+          threshold: "80%"
+
+      # Evicted Keys 급증
+      - alert: RedisEvictedKeysSpike
+        expr: db:redis_evicted_keys_rate:by_instance > 100
+        for: 3m
+        labels:
+          severity: critical
+          category: redis
+          db_engine: redis
+        annotations:
+          summary: "🚨 Redis Eviction 발생: {{ $labels.db_instance }}"
+          description: "초당 {{ $value }}개 키가 eviction되고 있습니다. 메모리를 증설하거나 TTL을 조정하세요."
+          current_value: "{{ $value }}/s"
+          threshold: "100/s"
+          runbook_url: "https://wiki.internal/runbook/redis-eviction"
+
+      # 적중률 저하
+      - alert: RedisHitRatioLow
+        expr: db:redis_hit_ratio:by_instance < 0.9
+        for: 10m
+        labels:
+          severity: warning
+          category: redis
+          db_engine: redis
+        annotations:
+          summary: "Redis 적중률 저하: {{ $labels.db_instance }}"
+          description: "캐시 적중률이 {{ $value | humanizePercentage }}입니다. 캐시 전략을 검토하세요."
+          current_value: "{{ $value | humanizePercentage }}"
+          threshold: "90%"
+
+      # Connected Clients 높음
+      - alert: RedisConnectionsHigh
+        expr: db:redis_connected_clients:by_instance > 5000
+        for: 5m
+        labels:
+          severity: warning
+          category: redis
+          db_engine: redis
+        annotations:
+          summary: "Redis 연결 수 높음: {{ $labels.db_instance }}"
+          description: "현재 {{ $value }}개 클라이언트 연결."
+          current_value: "{{ $value }}"
+          threshold: "5000"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # DynamoDB 성능 알람
+  # ═══════════════════════════════════════════════════════════════════
+  - name: dynamodb_performance
+    rules:
+      # 스로틀 이벤트 발생
+      - alert: DynamoDBThrottleEvents
+        expr: |
+          db:dynamodb_throttle_events_rate:by_table > 0
+        for: 2m
+        labels:
+          severity: warning
+          category: dynamodb
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB 스로틀 발생: {{ $labels.table_name }}"
+          description: "초당 {{ $value }}건의 스로틀이 발생하고 있습니다. 용량 모드를 검토하세요."
+          current_value: "{{ $value }}/s"
+          threshold: "0/s"
+          runbook_url: "https://wiki.internal/runbook/dynamodb-throttle"
+
+      # 지연시간 높음 (P99 > 100ms)
+      - alert: DynamoDBLatencyHigh
+        expr: db:dynamodb_latency_p99:by_table > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: dynamodb
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB 지연시간 높음: {{ $labels.table_name }}"
+          description: "P99 지연시간이 {{ $value }}ms입니다."
+          current_value: "{{ $value }}ms"
+          threshold: "100ms"
+
+      # 시스템 에러 발생
+      - alert: DynamoDBSystemErrors
+        expr: db:dynamodb_system_errors_rate:by_table > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: dynamodb
+          db_engine: dynamodb
+        annotations:
+          summary: "🚨 DynamoDB 시스템 에러: {{ $labels.table_name }}"
+          description: "DynamoDB 서비스 측 에러가 발생하고 있습니다. AWS 상태를 확인하세요."
+          current_value: "{{ $value }}/s"
+          threshold: "0/s"
+
+      # 용량 사용률 높음
+      - alert: DynamoDBCapacityUtilizationHigh
+        expr: |
+          db:dynamodb_consumed_rcu_ratio:by_table > 0.8
+          or
+          db:dynamodb_consumed_wcu_ratio:by_table > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          category: dynamodb
+          db_engine: dynamodb
+        annotations:
+          summary: "DynamoDB 용량 사용률 높음: {{ $labels.table_name }}"
+          description: "프로비저닝된 용량의 80% 이상을 사용하고 있습니다. 스케일업을 고려하세요."
+          current_value: "{{ $value | humanizePercentage }}"
+          threshold: "80%"

@@ -1,0 +1,234 @@
+# =============================================================================
+# MySQL (Aurora MySQL) 커스텀 쿼리 설정
+# =============================================================================
+# mysqld_exporter의 --collect.custom_query.hr/mr/lr 옵션으로 사용
+# 
+# 사용법:
+#   mysqld_exporter --collect.custom_query.hr \
+#     --collect.custom_query.hr.directory=/etc/mysql-exporter/custom-queries/
+#
+# 해상도:
+#   hr (High Resolution): 매 scrape마다 실행 (30초)
+#   mr (Medium Resolution): 10분마다 실행
+#   lr (Low Resolution): 1시간마다 실행
+#
+# ⚠️ 주의: information_schema.innodb_buffer_page 쿼리는 부하가 큼
+#          → lr(Low Resolution)로 설정 권장
+# =============================================================================
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# [HR] InnoDB Adaptive Hash Index 상태
+# 기본 Exporter에서 수집하지 않는 AHI 성능 지표
+# AHI 히트율이 낮으면 비활성화를 고려해야 함
+# ─────────────────────────────────────────────────────────────────────────────
+mysql_innodb_adaptive_hash_searches:
+  query: |
+    SELECT 
+      MAX(CASE WHEN stat_name = 'adaptive_hash_searches' THEN stat_value END) AS searches,
+      MAX(CASE WHEN stat_name = 'adaptive_hash_searches_btree' THEN stat_value END) AS searches_btree
+    FROM information_schema.innodb_metrics 
+    WHERE stat_name IN ('adaptive_hash_searches', 'adaptive_hash_searches_btree')
+  metrics:
+    - searches:
+        usage: "COUNTER"
+        description: "AHI를 통해 성공한 검색 횟수"
+    - searches_btree:
+        usage: "COUNTER"
+        description: "B-tree를 통해 수행된 검색 횟수 (AHI 미적중)"
+
+# AHI 히트율 (계산 메트릭 — Recording Rule에서 처리)
+# expr: searches / (searches + searches_btree)
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# [HR] InnoDB Redo Log 경합
+# Redo Log 쓰기 대기가 빈번하면 로그 파일 크기 증가 필요
+# ─────────────────────────────────────────────────────────────────────────────
+mysql_innodb_redo_log:
+  query: |
+    SELECT 
+      MAX(CASE WHEN stat_name = 'log_waits' THEN stat_value END) AS log_waits,
+      MAX(CASE WHEN stat_name = 'log_write_requests' THEN stat_value END) AS log_write_requests,
+      MAX(CASE WHEN stat_name = 'log_writes' THEN stat_value END) AS log_writes,
+      MAX(CASE WHEN stat_name = 'os_log_pending_writes' THEN stat_value END) AS os_log_pending_writes,
+      MAX(CASE WHEN stat_name = 'log_lsn_current' THEN stat_value END) AS log_lsn_current,
+      MAX(CASE WHEN stat_name = 'log_lsn_checkpoint_age' THEN stat_value END) AS log_checkpoint_age
+    FROM information_schema.innodb_metrics 
+    WHERE stat_name IN (
+      'log_waits', 'log_write_requests', 'log_writes',
+      'os_log_pending_writes', 'log_lsn_current', 'log_lsn_checkpoint_age'
+    )
+  metrics:
+    - log_waits:
+        usage: "COUNTER"
+        description: "Redo Log 버퍼 공간 부족으로 대기한 횟수"
+    - log_write_requests:
+        usage: "COUNTER"
+        description: "Redo Log 쓰기 요청 수"
+    - log_writes:
+        usage: "COUNTER"
+        description: "실제 Redo Log 물리 쓰기 수"
+    - os_log_pending_writes:
+        usage: "GAUGE"
+        description: "OS 레벨 Redo Log 대기 중인 쓰기 수"
+    - log_lsn_current:
+        usage: "COUNTER"
+        description: "현재 LSN (Log Sequence Number)"
+    - log_checkpoint_age:
+        usage: "GAUGE"
+        description: "체크포인트 Age (현재 LSN - 마지막 체크포인트 LSN)"
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# [HR] Lock Wait 상세
+# 락 대기 수와 최대 대기 시간 — Critical 알람 대상
+# ─────────────────────────────────────────────────────────────────────────────
+mysql_innodb_lock_waits:
+  query: |
+    SELECT 
+      COUNT(*) AS lock_wait_count,
+      COALESCE(MAX(TIMESTAMPDIFF(SECOND, trx_wait_started, NOW())), 0) AS max_wait_seconds,
+      COALESCE(AVG(TIMESTAMPDIFF(SECOND, trx_wait_started, NOW())), 0) AS avg_wait_seconds
+    FROM information_schema.innodb_trx 
+    WHERE trx_state = 'LOCK WAIT'
+  metrics:
+    - lock_wait_count:
+        usage: "GAUGE"
+        description: "현재 락 대기 중인 트랜잭션 수"
+    - max_wait_seconds:
+        usage: "GAUGE"
+        description: "가장 오래 대기 중인 트랜잭션의 대기 시간(초)"
+    - avg_wait_seconds:
+        usage: "GAUGE"
+        description: "평균 락 대기 시간(초)"
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# [HR] Lock Type별 분포
+# 어떤 종류의 락이 많이 발생하는지 확인
+# ─────────────────────────────────────────────────────────────────────────────
+mysql_innodb_lock_type_distribution:
+  query: |
+    SELECT 
+      lock_type,
+      lock_mode,
+      COUNT(*) AS count
+    FROM performance_schema.data_locks 
+    GROUP BY lock_type, lock_mode
+  metrics:
+    - lock_type:
+        usage: "LABEL"
+        description: "락 유형 (RECORD, TABLE, etc.)"
+    - lock_mode:
+        usage: "LABEL"
+        description: "락 모드 (S, X, IS, IX, etc.)"
+    - count:
+        usage: "GAUGE"
+        description: "해당 유형/모드의 현재 락 수"
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# [HR] InnoDB 트랜잭션 상태 분포
+# 장시간 실행 트랜잭션 감지
+# ─────────────────────────────────────────────────────────────────────────────
+mysql_innodb_trx_status:
+  query: |
+    SELECT 
+      trx_state AS state,
+      COUNT(*) AS count,
+      COALESCE(MAX(TIMESTAMPDIFF(SECOND, trx_started, NOW())), 0) AS max_duration_seconds
+    FROM information_schema.innodb_trx
+    GROUP BY trx_state
+  metrics:
+    - state:
+        usage: "LABEL"
+        description: "트랜잭션 상태 (RUNNING, LOCK WAIT, etc.)"
+    - count:
+        usage: "GAUGE"
+        description: "해당 상태의 트랜잭션 수"
+    - max_duration_seconds:
+        usage: "GAUGE"
+        description: "해당 상태에서 가장 오래된 트랜잭션 지속 시간(초)"
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# [LR] Buffer Pool 페이지별 분포
+# ⚠️ 주의: information_schema.innodb_buffer_page는 부하가 크므로 LR 권장
+# 버퍼풀 크기가 클수록 쿼리 시간이 증가 — 모니터링 전용 Read Replica에서만 실행 권장
+# ─────────────────────────────────────────────────────────────────────────────
+mysql_innodb_buffer_pool_page_distribution:
+  query: |
+    SELECT 
+      page_type,
+      COUNT(*) AS pages,
+      SUM(number_records) AS records,
+      SUM(data_size) AS data_bytes
+    FROM information_schema.innodb_buffer_page
+    WHERE page_type != 'UNKNOWN'
+    GROUP BY page_type
+  metrics:
+    - page_type:
+        usage: "LABEL"
+        description: "페이지 유형 (INDEX, UNDO_LOG, BLOB, SYSTEM, etc.)"
+    - pages:
+        usage: "GAUGE"
+        description: "해당 유형의 페이지 수"
+    - records:
+        usage: "GAUGE"
+        description: "해당 유형의 총 레코드 수"
+    - data_bytes:
+        usage: "GAUGE"
+        description: "해당 유형의 데이터 크기 (바이트)"
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# [HR] InnoDB Mutex/Semaphore 경합
+# 높은 mutex 대기는 내부 경합 문제를 의미
+# ─────────────────────────────────────────────────────────────────────────────
+mysql_innodb_mutex_contention:
+  query: |
+    SELECT 
+      MAX(CASE WHEN stat_name = 'innodb_rwlock_s_spin_waits' THEN stat_value END) AS rwlock_s_spin_waits,
+      MAX(CASE WHEN stat_name = 'innodb_rwlock_x_spin_waits' THEN stat_value END) AS rwlock_x_spin_waits,
+      MAX(CASE WHEN stat_name = 'innodb_rwlock_sx_spin_waits' THEN stat_value END) AS rwlock_sx_spin_waits,
+      MAX(CASE WHEN stat_name = 'innodb_rwlock_s_os_waits' THEN stat_value END) AS rwlock_s_os_waits,
+      MAX(CASE WHEN stat_name = 'innodb_rwlock_x_os_waits' THEN stat_value END) AS rwlock_x_os_waits
+    FROM information_schema.innodb_metrics
+    WHERE stat_name LIKE 'innodb_rwlock%'
+  metrics:
+    - rwlock_s_spin_waits:
+        usage: "COUNTER"
+        description: "공유(S) RW-lock spin wait 횟수"
+    - rwlock_x_spin_waits:
+        usage: "COUNTER"
+        description: "배타(X) RW-lock spin wait 횟수"
+    - rwlock_sx_spin_waits:
+        usage: "COUNTER"
+        description: "SX RW-lock spin wait 횟수"
+    - rwlock_s_os_waits:
+        usage: "COUNTER"
+        description: "공유(S) RW-lock OS wait 횟수 (커널 대기)"
+    - rwlock_x_os_waits:
+        usage: "COUNTER"
+        description: "배타(X) RW-lock OS wait 횟수 (커널 대기)"
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# [MR] Undo History Length
+# Purge 지연을 나타내는 핵심 지표
+# ─────────────────────────────────────────────────────────────────────────────
+mysql_innodb_undo_history:
+  query: |
+    SELECT 
+      MAX(CASE WHEN stat_name = 'trx_rseg_history_len' THEN stat_value END) AS history_length,
+      MAX(CASE WHEN stat_name = 'purge_trx_id_age' THEN stat_value END) AS purge_trx_age
+    FROM information_schema.innodb_metrics
+    WHERE stat_name IN ('trx_rseg_history_len', 'purge_trx_id_age')
+  metrics:
+    - history_length:
+        usage: "GAUGE"
+        description: "InnoDB Undo History Length (Purge 대기 트랜잭션 수)"
+    - purge_trx_age:
+        usage: "GAUGE"
+        description: "Purge 트랜잭션 Age"

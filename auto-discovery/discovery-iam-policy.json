@@ -1,0 +1,57 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RDSDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBClusters",
+        "rds:DescribeDBInstances",
+        "rds:ListTagsForResource",
+        "rds:DescribeDBClusterEndpoints"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${AWS_REGION}"
+        }
+      }
+    },
+    {
+      "Sid": "ElastiCacheDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "elasticache:DescribeCacheClusters",
+        "elasticache:DescribeReplicationGroups",
+        "elasticache:ListTagsForResource",
+        "elasticache:DescribeCacheSubnetGroups"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${AWS_REGION}"
+        }
+      }
+    },
+    {
+      "Sid": "PrometheusRemoteWrite",
+      "Effect": "Allow",
+      "Action": [
+        "aps:RemoteWrite",
+        "aps:GetSeries",
+        "aps:GetLabels",
+        "aps:GetMetricMetadata"
+      ],
+      "Resource": "arn:aws:aps:${AWS_REGION}:${ACCOUNT_ID}:workspace/*"
+    },
+    {
+      "Sid": "SecretsManagerAccess",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:db-monitoring-*"
+    }
+  ]
+}

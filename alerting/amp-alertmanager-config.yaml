@@ -1,0 +1,203 @@
+# =============================================================================
+# AMP AlertManager 설정 — SNS 알람 라우팅
+# =============================================================================
+#
+# Amazon Managed Prometheus의 AlertManager 설정입니다.
+# Alert Rules에서 발생한 알림을 심각도별로 SNS Topic에 전달합니다.
+#
+# 적용 방법:
+#   aws amp put-alert-manager-definition \
+#     --workspace-id $AMP_WORKSPACE_ID \
+#     --data fileb://amp-alertmanager-config.yaml
+#
+# ⚠️ 주의: ${SNS_TOPIC_ARN_*} 부분을 실제 ARN으로 교체하거나
+#          deploy-all.sh에서 envsubst로 치환해야 합니다.
+# =============================================================================
+
+# AMP AlertManager 설정 (Prometheus AlertManager 형식)
+alertmanager_config: |
+  # ─────────────────────────────────────────────────────────────────
+  # 전역 설정
+  # ─────────────────────────────────────────────────────────────────
+  global:
+    # 알림 해결(resolved) 메시지도 전송
+    resolve_timeout: 5m
+
+  # ─────────────────────────────────────────────────────────────────
+  # 라우팅 트리: 심각도별 SNS Topic으로 분기
+  # ─────────────────────────────────────────────────────────────────
+  route:
+    # 기본 수신자 (매칭되지 않는 알림)
+    receiver: 'sns-warning'
+    
+    # 알림 그룹화: 동일 DB 인스턴스의 알림을 묶어서 발송 (알림 폭풍 방지)
+    group_by: ['alertname', 'db_instance', 'account_id', 'region']
+    
+    # 그룹 대기 시간: 같은 그룹의 알림을 30초간 모아서 한번에 발송
+    group_wait: 30s
+    
+    # 그룹 전송 간격: 동일 그룹에 새 알림 추가 시 5분 후 재발송
+    group_interval: 5m
+    
+    # 반복 전송 간격: 해결되지 않은 알림을 4시간마다 재전송
+    repeat_interval: 4h
+    
+    # 심각도별 하위 라우팅
+    routes:
+      # Critical: 즉시 대응 필요
+      - match:
+          severity: critical
+        receiver: 'sns-critical'
+        group_wait: 10s          # 빠른 발송 (10초만 대기)
+        repeat_interval: 1h      # 1시간마다 반복
+        continue: false
+      
+      # Warning: 주의 필요
+      - match:
+          severity: warning
+        receiver: 'sns-warning'
+        group_wait: 30s
+        repeat_interval: 4h
+        continue: false
+      
+      # Info: 참고 사항
+      - match:
+          severity: info
+        receiver: 'sns-info'
+        group_wait: 60s
+        repeat_interval: 12h     # 12시간마다 반복
+        continue: false
+
+  # ─────────────────────────────────────────────────────────────────
+  # 알림 억제 (Inhibition Rules)
+  # ─────────────────────────────────────────────────────────────────
+  inhibit_rules:
+    # Critical 알림이 발생하면 같은 인스턴스의 Warning 억제
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['db_instance', 'account_id']
+    
+    # AllReplicasDown 발생 시 개별 ExporterDown 억제
+    - source_match:
+        alertname: 'AllReplicasDown'
+      target_match:
+        alertname: 'ExporterDown'
+      equal: ['db_instance']
+    
+    # ADOTCollectorDown 발생 시 모든 Exporter 관련 알림 억제
+    # (Collector가 죽으면 Exporter 상태를 알 수 없으므로)
+    - source_match:
+        alertname: 'ADOTCollectorDown'
+      target_match_re:
+        alertname: 'ExporterDown|MetricGapDetected'
+
+  # ─────────────────────────────────────────────────────────────────
+  # 수신자 (Receivers) — SNS Topic별 설정
+  # ─────────────────────────────────────────────────────────────────
+  receivers:
+    # Info 알림 → SNS Info Topic
+    - name: 'sns-info'
+      sns_configs:
+        - topic_arn: '${SNS_INFO_TOPIC_ARN}'
+          sigv4:
+            region: '${AWS_REGION}'
+          subject: '[INFO] DB 모니터링: {{ .GroupLabels.alertname }}'
+          message: |
+            {{ range .Alerts }}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            📋 알림: {{ .Labels.alertname }}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            • DB 인스턴스: {{ .Labels.db_instance }}
+            • 엔진: {{ .Labels.db_engine }}
+            • 계정: {{ .Labels.account_id }}
+            • 리전: {{ .Labels.region }}
+            • 심각도: INFO
+            • 요약: {{ .Annotations.summary }}
+            • 상세: {{ .Annotations.description }}
+            • 발생 시각: {{ .StartsAt.Format "2006-01-02 15:04:05 KST" }}
+            {{ if .EndsAt }}• 해결 시각: {{ .EndsAt.Format "2006-01-02 15:04:05 KST" }}{{ end }}
+            {{ end }}
+          attributes:
+            severity: info
+            source: amp-alertmanager
+          send_resolved: true
+    
+    # Warning 알림 → SNS Warning Topic
+    - name: 'sns-warning'
+      sns_configs:
+        - topic_arn: '${SNS_WARNING_TOPIC_ARN}'
+          sigv4:
+            region: '${AWS_REGION}'
+          subject: '[WARNING] DB 모니터링: {{ .GroupLabels.alertname }} ({{ .GroupLabels.db_instance }})'
+          message: |
+            {{ range .Alerts }}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            ⚠️ 경고: {{ .Labels.alertname }}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            • DB 인스턴스: {{ .Labels.db_instance }}
+            • 엔진: {{ .Labels.db_engine }}
+            • 클러스터: {{ .Labels.db_cluster }}
+            • 계정: {{ .Labels.account_id }}
+            • 리전: {{ .Labels.region }}
+            • 심각도: WARNING
+            • 요약: {{ .Annotations.summary }}
+            • 상세: {{ .Annotations.description }}
+            • 현재 값: {{ .Annotations.current_value }}
+            • 임계값: {{ .Annotations.threshold }}
+            • 발생 시각: {{ .StartsAt.Format "2006-01-02 15:04:05 KST" }}
+            {{ if .Annotations.runbook_url }}• 대응 가이드: {{ .Annotations.runbook_url }}{{ end }}
+            {{ end }}
+            
+            ─────────────────────────
+            📊 Grafana 대시보드: ${GRAFANA_URL}/d/db-overview
+          attributes:
+            severity: warning
+            source: amp-alertmanager
+          send_resolved: true
+    
+    # Critical 알림 → SNS Critical Topic
+    - name: 'sns-critical'
+      sns_configs:
+        - topic_arn: '${SNS_CRITICAL_TOPIC_ARN}'
+          sigv4:
+            region: '${AWS_REGION}'
+          subject: '🚨 [CRITICAL] DB 긴급: {{ .GroupLabels.alertname }} ({{ .GroupLabels.db_instance }})'
+          message: |
+            {{ range .Alerts }}
+            ╔══════════════════════════════════════════╗
+            ║  🚨 긴급 알림: {{ .Labels.alertname }}
+            ╚══════════════════════════════════════════╝
+            
+            • DB 인스턴스: {{ .Labels.db_instance }}
+            • 엔진: {{ .Labels.db_engine }}
+            • 클러스터: {{ .Labels.db_cluster }}
+            • 계정: {{ .Labels.account_id }}
+            • 리전: {{ .Labels.region }}
+            • 심각도: 🔴 CRITICAL
+            
+            ┌─ 상세 정보 ──────────────────────────────
+            │ 요약: {{ .Annotations.summary }}
+            │ 상세: {{ .Annotations.description }}
+            │ 현재 값: {{ .Annotations.current_value }}
+            │ 임계값: {{ .Annotations.threshold }}
+            └──────────────────────────────────────────
+            
+            • 발생 시각: {{ .StartsAt.Format "2006-01-02 15:04:05 KST" }}
+            {{ if .Annotations.runbook_url }}• 📖 대응 가이드: {{ .Annotations.runbook_url }}{{ end }}
+            {{ end }}
+            
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            즉시 대응이 필요합니다!
+            📊 Grafana: ${GRAFANA_URL}/d/db-overview
+            📞 온콜 에스컬레이션 필요 시 PagerDuty 확인
+          attributes:
+            severity: critical
+            source: amp-alertmanager
+          send_resolved: true
+
+  # ─────────────────────────────────────────────────────────────────
+  # 메시지 템플릿 (공통)
+  # ─────────────────────────────────────────────────────────────────
+  templates: []

@@ -1,0 +1,148 @@
+# =============================================================================
+# Redis/Valkey Exporter 템플릿
+# ElastiCache Redis 및 Valkey 클러스터/노드 모니터링용
+# 환경변수 치환(envsubst)으로 동적 생성됩니다.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${DEPLOY_NAME}
+  namespace: ${TARGET_NAMESPACE}
+  labels:
+    app: redis-exporter
+    db-discovery/managed-by: auto-discovery
+    db-discovery/exporter-type: redis
+    db-discovery/source-type: ${SOURCE_TYPE}
+  annotations:
+    db-discovery/db-identifier: "${DB_IDENTIFIER}"
+    db-discovery/endpoint: "${DB_ENDPOINT}"
+    db-discovery/port: "${DB_PORT}"
+    db-discovery/engine: "redis"
+    db-discovery/cluster-id: "${CLUSTER_ID}"
+    db-discovery/created-at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+spec:
+  replicas: 1
+  # HA: 업데이트 시에도 기존 Pod 유지 (메트릭 갭 방지)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+      db-instance: ${DB_IDENTIFIER}
+  template:
+    metadata:
+      labels:
+        app: redis-exporter
+        db-instance: ${DB_IDENTIFIER}
+        db-discovery/managed-by: auto-discovery
+      annotations:
+        # ADOT Collector가 이 Pod을 자동으로 scrape하도록 설정
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      # 빠른 종료 (기본 30초 → 5초)
+      terminationGracePeriodSeconds: 5
+      # 리소스 부족 시 eviction 방지
+      priorityClassName: db-exporter-priority
+      # 노드 장애 시 빠른 재스케줄링 (300초 → 10초)
+      tolerations:
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 10
+        - key: "node.kubernetes.io/unreachable"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 10
+      containers:
+        - name: redis-exporter
+          image: ${EXPORTER_IMAGE}
+          ports:
+            - containerPort: 9121
+              name: metrics
+              protocol: TCP
+          env:
+            # Redis/Valkey 접속 주소
+            - name: REDIS_ADDR
+              value: "redis://${DB_ENDPOINT}:${DB_PORT}"
+            # TLS 활성화 (ElastiCache in-transit encryption 사용 시)
+            - name: REDIS_EXPORTER_SKIP_TLS_VERIFICATION
+              value: "true"
+            # ElastiCache는 AUTH 토큰 기반 인증 사용 가능
+            # 필요시 아래 주석 해제
+            # - name: REDIS_PASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: elasticache-auth-token
+            #       key: auth-token
+          args:
+            # 추가 수집 메트릭 설정
+            - "--redis.addr=redis://${DB_ENDPOINT}:${DB_PORT}"
+            - "--web.listen-address=:9121"
+            - "--web.telemetry-path=/metrics"
+            # 클러스터 모드 메트릭 포함
+            - "--include-system-metrics"
+            # 키 공간 정보 수집
+            - "--is-cluster=false"
+          resources:
+            requests:
+              cpu: 30m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          # 빠른 복구: 문제 감지 5초, 재시작까지 총 10초
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 9121
+            periodSeconds: 2
+            failureThreshold: 15
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9121
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9121
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${DEPLOY_NAME}
+  namespace: ${TARGET_NAMESPACE}
+  labels:
+    app: redis-exporter
+    db-discovery/managed-by: auto-discovery
+    db-instance: ${DB_IDENTIFIER}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+    prometheus.io/path: "/metrics"
+    db-discovery/db-identifier: "${DB_IDENTIFIER}"
+    db-discovery/endpoint: "${DB_ENDPOINT}"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9121
+      targetPort: 9121
+      protocol: TCP
+      name: metrics
+  selector:
+    app: redis-exporter
+    db-instance: ${DB_IDENTIFIER}

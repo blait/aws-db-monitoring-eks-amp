@@ -1,0 +1,149 @@
+# =============================================================================
+# MS SQL Exporter Helm Values
+# =============================================================================
+# 아키텍처: Amazon RDS for MS SQL → MS SQL Exporter → ADOT Collector → AMP
+# 이미지: awarber/prometheus-mssql-exporter (경량, MSSQL 특화)
+# 포트: 4000 (기본)
+# =============================================================================
+
+# 레플리카 수
+replicaCount: 1
+
+# 컨테이너 이미지 설정
+image:
+  repository: awaragi/prometheus-mssql-exporter
+  tag: "0.7.1"
+  pullPolicy: IfNotPresent
+
+# 서비스 설정
+service:
+  type: ClusterIP
+  port: 4000
+  targetPort: 4000
+  annotations:
+    # ADOT Collector가 이 서비스를 자동 스크래핑하도록 annotation 설정
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4000"
+    prometheus.io/path: "/metrics"
+
+# Pod annotation (ADOT Collector의 kubernetes-pods job에서 발견)
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "4000"
+  prometheus.io/path: "/metrics"
+
+# SQL Server 연결 설정 (환경변수)
+env:
+  # SERVER: RDS SQL Server 엔드포인트 (CloudFormation Output에서 가져옴)
+  - name: SERVER
+    value: "${SQLSERVER_ENDPOINT}"
+  # PORT: SQL Server 기본 포트
+  - name: PORT
+    value: "1433"
+  # USERNAME: 모니터링 계정
+  - name: USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: mssql-exporter-credentials
+        key: username
+  # PASSWORD: 모니터링 계정 비밀번호
+  - name: PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: mssql-exporter-credentials
+        key: password
+
+# 리소스 제한
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# 네임스페이스 (observability 네임스페이스에 배포)
+namespace: observability
+
+# Node Selector (EKS 노드 배치)
+nodeSelector:
+  kubernetes.io/os: linux
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  name: mssql-exporter
+  annotations: {}
+
+# Kubernetes Secret 생성 (Helm 설치 시 함께 생성)
+# 실제 배포 시 envsubst 또는 --set으로 값 주입
+secrets:
+  create: true
+  name: mssql-exporter-credentials
+  data:
+    username: "exporter"
+    password: "ExporterPass123!"
+
+# Health check
+livenessProbe:
+  httpGet:
+    path: /metrics
+    port: 4000
+  initialDelaySeconds: 30
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /metrics
+    port: 4000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+# ── 커스텀 메트릭 쿼리 (선택사항) ──
+# SQL Server 엔진 레벨의 추가 메트릭 수집
+customMetrics:
+  enabled: true
+  queries: |
+    # 연결 수 모니터링
+    - query_name: mssql_connections
+      query: |
+        SELECT 
+          DB_NAME(database_id) as database_name,
+          COUNT(*) as connection_count
+        FROM sys.dm_exec_sessions
+        WHERE database_id > 0
+        GROUP BY database_id
+      metrics:
+        - database_name:
+            usage: "LABEL"
+            description: "Database name"
+        - connection_count:
+            usage: "GAUGE"
+            description: "Number of active connections per database"
+    
+    # Wait 통계 모니터링
+    - query_name: mssql_wait_stats
+      query: |
+        SELECT TOP 10
+          wait_type,
+          waiting_tasks_count,
+          wait_time_ms
+        FROM sys.dm_os_wait_stats
+        WHERE waiting_tasks_count > 0
+        ORDER BY wait_time_ms DESC
+      metrics:
+        - wait_type:
+            usage: "LABEL"
+            description: "Wait type"
+        - waiting_tasks_count:
+            usage: "GAUGE"
+            description: "Number of waiting tasks"
+        - wait_time_ms:
+            usage: "GAUGE"
+            description: "Total wait time in milliseconds"

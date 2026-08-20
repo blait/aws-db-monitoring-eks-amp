@@ -1,0 +1,403 @@
+# =============================================================================
+# AMP Recording Rules — HA Exporter 중복 제거 + 비용 최적화
+# =============================================================================
+#
+# 💡 핵심 원리:
+#   - Exporter Pod 2개가 동일 DB에서 동시에 메트릭을 수집
+#   - 각 Pod의 메트릭에는 "pod" 라벨이 포함됨
+#   - Recording Rules에서 "max without(pod)" 로 pod 라벨을 제거하며 하나만 남김
+#   
+# ⭐ Rate/Counter 메트릭 처리:
+#   - rate()를 먼저 각 Pod별로 계산한 후 max without(pod) 적용
+#   - 이렇게 하면:
+#     - Pod A 장애 시 rate()가 NaN 반환 → max에서 Pod B의 정상값 선택
+#     - Counter 리셋 문제 없음 (rate가 Pod 내에서 계산되므로)
+#     - 전환 시 스파이크/이상 수치 없음
+#
+# 💰 Grafana 비용 절약:
+#   - Grafana에서 db: 접두사 메트릭만 쿼리 → 단일 시계열만 조회
+#   - pre-aggregation 결과를 사용하므로 쿼리 처리량 최소
+#
+# 📌 적용 방법:
+#   aws amp create-rule-groups-namespace \
+#     --workspace-id $AMP_WORKSPACE_ID \
+#     --name "db-monitoring-ha-rules" \
+#     --data fileb://amp-recording-rules-ha.yaml
+# =============================================================================
+
+groups:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MySQL Recording Rules
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: mysql_ha_dedup
+    interval: 30s
+    rules:
+      # ─── Gauge 메트릭 (순간 값): max without(pod) ───
+
+      # 현재 연결된 스레드 수
+      - record: db:mysql_threads_connected
+        expr: max without(pod) (mysql_global_status_threads_connected)
+
+      # 현재 실행 중인 스레드 수
+      - record: db:mysql_threads_running
+        expr: max without(pod) (mysql_global_status_threads_running)
+
+      # InnoDB 버퍼 풀 사용량 (bytes)
+      - record: db:mysql_buffer_pool_bytes_used
+        expr: max without(pod) (mysql_global_status_innodb_buffer_pool_bytes_data)
+
+      # InnoDB 버퍼 풀 전체 크기 (bytes)
+      - record: db:mysql_buffer_pool_bytes_total
+        expr: max without(pod) (mysql_global_variables_innodb_buffer_pool_size)
+
+      # 현재 Aborted Clients (연결 끊김)
+      - record: db:mysql_aborted_clients
+        expr: max without(pod) (mysql_global_status_aborted_clients)
+
+      # Open Tables
+      - record: db:mysql_open_tables
+        expr: max without(pod) (mysql_global_status_open_tables)
+
+      # ─── Counter/Rate 메트릭: rate 먼저 → max ───
+
+      # QPS (초당 쿼리 수)
+      - record: db:mysql_qps
+        expr: max without(pod) (rate(mysql_global_status_queries[5m]))
+
+      # 초당 질문 수 (Questions)
+      - record: db:mysql_questions_rate
+        expr: max without(pod) (rate(mysql_global_status_questions[5m]))
+
+      # Slow Queries 발생률
+      - record: db:mysql_slow_queries_rate
+        expr: max without(pod) (rate(mysql_global_status_slow_queries[5m]))
+
+      # Bytes Received (초당 수신량)
+      - record: db:mysql_bytes_received_rate
+        expr: max without(pod) (rate(mysql_global_status_bytes_received[5m]))
+
+      # Bytes Sent (초당 전송량)
+      - record: db:mysql_bytes_sent_rate
+        expr: max without(pod) (rate(mysql_global_status_bytes_sent[5m]))
+
+      # InnoDB Row Operations
+      - record: db:mysql_innodb_rows_read_rate
+        expr: max without(pod) (rate(mysql_global_status_innodb_rows_read[5m]))
+
+      - record: db:mysql_innodb_rows_inserted_rate
+        expr: max without(pod) (rate(mysql_global_status_innodb_rows_inserted[5m]))
+
+      - record: db:mysql_innodb_rows_updated_rate
+        expr: max without(pod) (rate(mysql_global_status_innodb_rows_updated[5m]))
+
+      - record: db:mysql_innodb_rows_deleted_rate
+        expr: max without(pod) (rate(mysql_global_status_innodb_rows_deleted[5m]))
+
+      # Table Locks
+      - record: db:mysql_table_locks_waited_rate
+        expr: max without(pod) (rate(mysql_global_status_table_locks_waited[5m]))
+
+      # ─── 계산 메트릭 ───
+
+      # InnoDB 버퍼 풀 적중률 (%)
+      - record: db:mysql_buffer_pool_hit_ratio
+        expr: |
+          max without(pod) (
+            1 - (
+              rate(mysql_global_status_innodb_buffer_pool_reads[5m])
+              / (rate(mysql_global_status_innodb_buffer_pool_read_requests[5m]) + 0.001)
+            )
+          )
+
+      # Replication Lag (Aurora Reader의 복제 지연)
+      - record: db:mysql_replication_lag
+        expr: max without(pod) (mysql_slave_status_seconds_behind_master)
+
+      # Connection Utilization (연결 사용률 %)
+      - record: db:mysql_connection_utilization
+        expr: |
+          max without(pod) (mysql_global_status_threads_connected)
+          / max without(pod) (mysql_global_variables_max_connections)
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # PostgreSQL Recording Rules
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: postgresql_ha_dedup
+    interval: 30s
+    rules:
+      # ─── Gauge 메트릭 ───
+
+      # 활성 연결 수
+      - record: db:pg_active_connections
+        expr: max without(pod) (pg_stat_activity_count{state="active"})
+
+      # 유휴 연결 수
+      - record: db:pg_idle_connections
+        expr: max without(pod) (pg_stat_activity_count{state="idle"})
+
+      # 총 연결 수 (DB별)
+      - record: db:pg_total_connections
+        expr: max without(pod) (sum without(datname) (pg_stat_database_numbackends))
+
+      # Dead Tuples (VACUUM 필요 여부 지표)
+      - record: db:pg_dead_tuples
+        expr: max without(pod) (sum without(relname, schemaname) (pg_stat_user_tables_n_dead_tup))
+
+      # Database Size (bytes)
+      - record: db:pg_database_size_bytes
+        expr: max without(pod) (pg_database_size_bytes{datname!~"template.*|rdsadmin"})
+
+      # Replication Lag (bytes)
+      - record: db:pg_replication_lag_bytes
+        expr: max without(pod) (pg_replication_lag)
+
+      # Lock 수
+      - record: db:pg_locks_count
+        expr: max without(pod) (sum without(mode, datname) (pg_locks_count))
+
+      # ─── Counter/Rate 메트릭 ───
+
+      # TPS (Transactions Per Second)
+      - record: db:pg_tps
+        expr: |
+          max without(pod) (
+            sum without(datname) (rate(pg_stat_database_xact_commit[5m]))
+            + sum without(datname) (rate(pg_stat_database_xact_rollback[5m]))
+          )
+
+      # Commit Rate
+      - record: db:pg_commits_rate
+        expr: max without(pod) (sum without(datname) (rate(pg_stat_database_xact_commit[5m])))
+
+      # Rollback Rate
+      - record: db:pg_rollbacks_rate
+        expr: max without(pod) (sum without(datname) (rate(pg_stat_database_xact_rollback[5m])))
+
+      # Blocks Read Rate (디스크 읽기)
+      - record: db:pg_blocks_read_rate
+        expr: max without(pod) (sum without(datname) (rate(pg_stat_database_blks_read[5m])))
+
+      # Blocks Hit Rate (캐시 적중)
+      - record: db:pg_blocks_hit_rate
+        expr: max without(pod) (sum without(datname) (rate(pg_stat_database_blks_hit[5m])))
+
+      # Tuples Fetched Rate
+      - record: db:pg_tuples_fetched_rate
+        expr: max without(pod) (sum without(datname) (rate(pg_stat_database_tup_fetched[5m])))
+
+      # Tuples Inserted Rate
+      - record: db:pg_tuples_inserted_rate
+        expr: max without(pod) (sum without(datname) (rate(pg_stat_database_tup_inserted[5m])))
+
+      # Tuples Updated Rate
+      - record: db:pg_tuples_updated_rate
+        expr: max without(pod) (sum without(datname) (rate(pg_stat_database_tup_updated[5m])))
+
+      # Tuples Deleted Rate
+      - record: db:pg_tuples_deleted_rate
+        expr: max without(pod) (sum without(datname) (rate(pg_stat_database_tup_deleted[5m])))
+
+      # WAL 생성률
+      - record: db:pg_wal_bytes_rate
+        expr: max without(pod) (rate(pg_stat_wal_wal_bytes_total[5m]))
+
+      # ─── 계산 메트릭 ───
+
+      # Cache Hit Ratio (%)
+      - record: db:pg_cache_hit_ratio
+        expr: |
+          max without(pod) (
+            sum without(datname) (pg_stat_database_blks_hit)
+            / (sum without(datname) (pg_stat_database_blks_hit) 
+               + sum without(datname) (pg_stat_database_blks_read) + 0.001)
+          )
+
+      # Connection Utilization (%)
+      - record: db:pg_connection_utilization
+        expr: |
+          max without(pod) (sum without(datname) (pg_stat_database_numbackends))
+          / max without(pod) (pg_settings_max_connections)
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MS SQL Server Recording Rules
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: mssql_ha_dedup
+    interval: 30s
+    rules:
+      # ─── Gauge 메트릭 ───
+
+      # 현재 연결 수
+      - record: db:mssql_connections
+        expr: max without(pod) (mssql_connections)
+
+      # Buffer Cache Hit Ratio (%)
+      - record: db:mssql_buffer_cache_hit_ratio
+        expr: max without(pod) (mssql_buffer_cache_hit_ratio)
+
+      # Page Life Expectancy (초)
+      - record: db:mssql_page_life_expectancy
+        expr: max without(pod) (mssql_page_life_expectancy)
+
+      # Memory Grants Pending
+      - record: db:mssql_memory_grants_pending
+        expr: max without(pod) (mssql_memory_grants_pending)
+
+      # Database Size
+      - record: db:mssql_database_size_bytes
+        expr: max without(pod) (mssql_database_filesize_bytes)
+
+      # ─── Counter/Rate 메트릭 ───
+
+      # Batch Requests/sec
+      - record: db:mssql_batch_requests_rate
+        expr: max without(pod) (rate(mssql_batch_requests[5m]))
+
+      # SQL Compilations/sec
+      - record: db:mssql_sql_compilations_rate
+        expr: max without(pod) (rate(mssql_sql_compilations[5m]))
+
+      # Lock Waits/sec
+      - record: db:mssql_lock_waits_rate
+        expr: max without(pod) (rate(mssql_lock_waits[5m]))
+
+      # Deadlocks/sec
+      - record: db:mssql_deadlocks_rate
+        expr: max without(pod) (rate(mssql_deadlocks[5m]))
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Redis/Valkey Recording Rules
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: redis_ha_dedup
+    interval: 30s
+    rules:
+      # ─── Gauge 메트릭 ───
+
+      # 연결된 클라이언트 수
+      - record: db:redis_connected_clients
+        expr: max without(pod) (redis_connected_clients)
+
+      # 메모리 사용량 (bytes)
+      - record: db:redis_memory_used_bytes
+        expr: max without(pod) (redis_memory_used_bytes)
+
+      # 메모리 최대값 (bytes)
+      - record: db:redis_memory_max_bytes
+        expr: max without(pod) (redis_memory_max_bytes)
+
+      # 현재 저장된 키 수
+      - record: db:redis_db_keys
+        expr: max without(pod) (sum without(db) (redis_db_keys))
+
+      # Blocked Clients
+      - record: db:redis_blocked_clients
+        expr: max without(pod) (redis_blocked_clients)
+
+      # Instantaneous OPS
+      - record: db:redis_ops_per_sec
+        expr: max without(pod) (redis_instantaneous_ops_per_sec)
+
+      # ─── Counter/Rate 메트릭 ───
+
+      # Commands Processed Rate
+      - record: db:redis_commands_processed_rate
+        expr: max without(pod) (rate(redis_commands_processed_total[5m]))
+
+      # Keyspace Hits Rate
+      - record: db:redis_keyspace_hits_rate
+        expr: max without(pod) (rate(redis_keyspace_hits_total[5m]))
+
+      # Keyspace Misses Rate
+      - record: db:redis_keyspace_misses_rate
+        expr: max without(pod) (rate(redis_keyspace_misses_total[5m]))
+
+      # Evicted Keys Rate
+      - record: db:redis_evicted_keys_rate
+        expr: max without(pod) (rate(redis_evicted_keys_total[5m]))
+
+      # Expired Keys Rate
+      - record: db:redis_expired_keys_rate
+        expr: max without(pod) (rate(redis_expired_keys_total[5m]))
+
+      # Network Input (bytes/sec)
+      - record: db:redis_net_input_bytes_rate
+        expr: max without(pod) (rate(redis_net_input_bytes_total[5m]))
+
+      # Network Output (bytes/sec)
+      - record: db:redis_net_output_bytes_rate
+        expr: max without(pod) (rate(redis_net_output_bytes_total[5m]))
+
+      # ─── 계산 메트릭 ───
+
+      # Cache Hit Ratio (%)
+      - record: db:redis_hit_ratio
+        expr: |
+          max without(pod) (rate(redis_keyspace_hits_total[5m]))
+          / (
+            max without(pod) (rate(redis_keyspace_hits_total[5m]))
+            + max without(pod) (rate(redis_keyspace_misses_total[5m]))
+            + 0.001
+          )
+
+      # Memory Utilization (%)
+      - record: db:redis_memory_utilization
+        expr: |
+          max without(pod) (redis_memory_used_bytes)
+          / (max without(pod) (redis_memory_max_bytes) + 1)
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Exporter Health & Alerting
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: exporter_health
+    interval: 15s
+    rules:
+      # 각 DB 인스턴스의 Exporter 상태 (살아있는 Pod 수)
+      - record: db:exporter_up_count
+        expr: count by (db_instance, db_engine) (up{job="db-exporters"} == 1)
+
+      # 각 DB 인스턴스에 하나라도 살아있는 Exporter가 있는지
+      - record: db:exporter_available
+        expr: max by (db_instance, db_engine) (up{job="db-exporters"})
+
+      # scrape 소요 시간 (성능 모니터링)
+      - record: db:exporter_scrape_duration
+        expr: max without(pod) (scrape_duration_seconds{job="db-exporters"})
+
+  - name: exporter_alerts
+    rules:
+      # ⚠️ 하나의 Exporter Pod 다운 (HA 동작 중이지만 주의 필요)
+      - alert: ExporterReplicaDown
+        expr: db:exporter_up_count < 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Exporter HA 열화: {{ $labels.db_instance }}"
+          description: |
+            {{ $labels.db_instance }} ({{ $labels.db_engine }})의 Exporter 중 
+            1개가 다운되었습니다. 모니터링은 계속되지만 HA가 보장되지 않습니다.
+            남은 Pod 수: {{ $value }}개
+
+      # 🔴 모든 Exporter Pod 다운 (메트릭 수집 완전 중단)
+      - alert: AllExporterReplicasDown
+        expr: db:exporter_available == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "모니터링 중단: {{ $labels.db_instance }}"
+          description: |
+            {{ $labels.db_instance }} ({{ $labels.db_engine }})의 모든 Exporter가 
+            다운되었습니다. 메트릭 수집이 완전히 중단되었습니다.
+            즉시 확인이 필요합니다.
+
+      # ⚠️ scrape 소요 시간 과다 (성능 문제 징후)
+      - alert: ExporterSlowScrape
+        expr: db:exporter_scrape_duration > 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Exporter scrape 지연: {{ $labels.db_instance }}"
+          description: |
+            {{ $labels.db_instance }}의 메트릭 수집에 {{ $value }}초가 소요됩니다.
+            scrape_interval(30초)에 가까워 데이터 손실 위험이 있습니다.

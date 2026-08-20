@@ -1,0 +1,271 @@
+# =============================================================================
+# SQL Server (RDS SQL Server) 커스텀 Collector 설정
+# =============================================================================
+# sql_exporter (burningalchemist/sql_exporter) 형식으로 작성
+#
+# 사용법:
+#   sql_exporter --config.file=/etc/sql-exporter/config.yaml
+#   config.yaml에서 collector_files로 이 파일을 참조
+#
+# 구조:
+#   collector_name: "이름"
+#   metrics:
+#     - metric_name: "프로메테우스 메트릭명"
+#       type: gauge|counter
+#       help: "설명"
+#       key_labels: [라벨로 사용할 컬럼]
+#       values: [값으로 사용할 컬럼]
+#       query: "SQL 쿼리"
+#
+# ⚠️ RDS SQL Server 참고:
+#   - xp_cmdshell 사용 불가
+#   - sysadmin 역할 제한
+#   - 일부 DMV는 RDS에서 접근 제한될 수 있음
+# =============================================================================
+
+collector_name: mssql_custom
+
+metrics:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Wait Stats 상세
+  # SQL Server 성능 분석의 핵심 — 어디서 시간을 소비하는지 파악
+  # ─────────────────────────────────────────────────────────────────────────
+  - metric_name: mssql_wait_stats_wait_time_ms
+    type: counter
+    help: "Wait Type별 총 대기 시간 (밀리초)"
+    key_labels:
+      - wait_type
+      - wait_category
+    values:
+      - wait_time_ms
+    query: |
+      SELECT 
+        wait_type,
+        CASE 
+          WHEN wait_type LIKE 'LCK%' THEN 'Lock'
+          WHEN wait_type LIKE 'PAGEIO%' OR wait_type LIKE 'WRITELOG%' THEN 'IO'
+          WHEN wait_type LIKE 'LATCH%' OR wait_type LIKE 'PAGELATCH%' THEN 'Latch'
+          WHEN wait_type LIKE 'ASYNC_NETWORK%' OR wait_type LIKE 'NET_%' THEN 'Network'
+          WHEN wait_type LIKE 'CXPACKET%' OR wait_type LIKE 'CXCONSUMER%' THEN 'Parallelism'
+          WHEN wait_type LIKE 'SOS_SCHEDULER%' THEN 'CPU'
+          WHEN wait_type LIKE 'MEMORY%' OR wait_type LIKE 'RESOURCE_SEMAPHORE%' THEN 'Memory'
+          ELSE 'Other'
+        END AS wait_category,
+        wait_time_ms
+      FROM sys.dm_os_wait_stats
+      WHERE waiting_tasks_count > 0
+        AND wait_type NOT IN (
+          'CLR_SEMAPHORE', 'LAZYWRITER_SLEEP', 'RESOURCE_QUEUE',
+          'SLEEP_TASK', 'SLEEP_SYSTEMTASK', 'SQLTRACE_BUFFER_FLUSH',
+          'WAITFOR', 'LOGMGR_QUEUE', 'CHECKPOINT_QUEUE',
+          'REQUEST_FOR_DEADLOCK_SEARCH', 'XE_TIMER_EVENT',
+          'BROKER_TO_FLUSH', 'BROKER_TASK_STOP', 'CLR_MANUAL_EVENT',
+          'DISPATCHER_QUEUE_SEMAPHORE', 'FT_IFTS_SCHEDULER_IDLE_WAIT',
+          'XE_DISPATCHER_WAIT', 'SQLTRACE_INCREMENTAL_FLUSH_SLEEP',
+          'DIRTY_PAGE_POLL', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION'
+        )
+      ORDER BY wait_time_ms DESC
+
+  - metric_name: mssql_wait_stats_signal_wait_ms
+    type: counter
+    help: "Wait Type별 Signal 대기 시간 (CPU 큐 대기, 밀리초)"
+    key_labels:
+      - wait_type
+    values:
+      - signal_wait_time_ms
+    query: |
+      SELECT 
+        wait_type,
+        signal_wait_time_ms
+      FROM sys.dm_os_wait_stats
+      WHERE waiting_tasks_count > 0
+        AND signal_wait_time_ms > 0
+      ORDER BY signal_wait_time_ms DESC
+      
+  - metric_name: mssql_wait_stats_waiting_tasks
+    type: gauge
+    help: "Wait Type별 현재 대기 중인 태스크 수"
+    key_labels:
+      - wait_type
+    values:
+      - waiting_tasks_count
+    query: |
+      SELECT 
+        wait_type,
+        waiting_tasks_count
+      FROM sys.dm_os_wait_stats
+      WHERE waiting_tasks_count > 100
+      ORDER BY waiting_tasks_count DESC
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # TempDB 경합
+  # TempDB 페이지 래치 경합은 동시성 문제의 주요 원인
+  # ─────────────────────────────────────────────────────────────────────────
+  - metric_name: mssql_tempdb_space_usage_kb
+    type: gauge
+    help: "TempDB 공간 사용량 (KB)"
+    key_labels:
+      - space_type
+    values:
+      - size_kb
+    query: |
+      SELECT 'user_objects' AS space_type, 
+        SUM(user_object_reserved_page_count) * 8 AS size_kb
+      FROM sys.dm_db_file_space_usage
+      UNION ALL
+      SELECT 'internal_objects',
+        SUM(internal_object_reserved_page_count) * 8
+      FROM sys.dm_db_file_space_usage
+      UNION ALL
+      SELECT 'version_store',
+        SUM(version_store_reserved_page_count) * 8
+      FROM sys.dm_db_file_space_usage
+      UNION ALL
+      SELECT 'free_space',
+        SUM(unallocated_extent_page_count) * 8
+      FROM sys.dm_db_file_space_usage
+
+  - metric_name: mssql_tempdb_contention_count
+    type: gauge
+    help: "TempDB 페이지 래치 경합 발생 수 (현재)"
+    values:
+      - contention_count
+    query: |
+      SELECT COUNT(*) AS contention_count
+      FROM sys.dm_exec_requests
+      WHERE wait_type LIKE '%PAGELATCH%'
+        AND resource_description LIKE '2:%'
+
+  - metric_name: mssql_tempdb_contention_max_wait_ms
+    type: gauge
+    help: "TempDB 래치 경합 최대 대기 시간 (ms)"
+    values:
+      - max_wait_ms
+    query: |
+      SELECT COALESCE(MAX(wait_duration_ms), 0) AS max_wait_ms
+      FROM sys.dm_os_waiting_tasks
+      WHERE wait_type LIKE '%PAGELATCH%'
+        AND resource_description LIKE '2:%'
+
+  - metric_name: mssql_tempdb_version_store_size_kb
+    type: gauge
+    help: "TempDB Version Store 크기 (KB) - RCSI/Snapshot Isolation 사용 시 증가"
+    values:
+      - version_store_kb
+    query: |
+      SELECT SUM(version_store_reserved_page_count) * 8 AS version_store_kb
+      FROM sys.dm_db_file_space_usage
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Query Store 통계
+  # 가장 비용이 높은 쿼리들의 통계
+  # ─────────────────────────────────────────────────────────────────────────
+  - metric_name: mssql_query_store_top_duration_us
+    type: gauge
+    help: "Query Store: Top 쿼리 평균 실행 시간 (마이크로초)"
+    key_labels:
+      - query_hash
+      - query_text_short
+    values:
+      - avg_duration_us
+    query: |
+      SELECT TOP 10
+        CONVERT(VARCHAR(32), q.query_hash, 2) AS query_hash,
+        LEFT(qt.query_sql_text, 100) AS query_text_short,
+        CAST(rs.avg_duration AS BIGINT) AS avg_duration_us
+      FROM sys.query_store_runtime_stats rs
+      JOIN sys.query_store_plan p ON rs.plan_id = p.plan_id
+      JOIN sys.query_store_query q ON p.query_id = q.query_id
+      JOIN sys.query_store_query_text qt ON q.query_text_id = qt.query_text_id
+      WHERE rs.last_execution_time > DATEADD(hour, -1, GETUTCDATE())
+      ORDER BY rs.avg_duration DESC
+
+  - metric_name: mssql_query_store_top_cpu_us
+    type: gauge
+    help: "Query Store: Top 쿼리 평균 CPU 시간 (마이크로초)"
+    key_labels:
+      - query_hash
+    values:
+      - avg_cpu_time_us
+    query: |
+      SELECT TOP 10
+        CONVERT(VARCHAR(32), q.query_hash, 2) AS query_hash,
+        CAST(rs.avg_cpu_time AS BIGINT) AS avg_cpu_time_us
+      FROM sys.query_store_runtime_stats rs
+      JOIN sys.query_store_plan p ON rs.plan_id = p.plan_id
+      JOIN sys.query_store_query q ON p.query_id = q.query_id
+      WHERE rs.last_execution_time > DATEADD(hour, -1, GETUTCDATE())
+      ORDER BY rs.avg_cpu_time DESC
+
+  - metric_name: mssql_query_store_top_logical_reads
+    type: gauge
+    help: "Query Store: Top 쿼리 평균 논리적 읽기 수"
+    key_labels:
+      - query_hash
+    values:
+      - avg_logical_io_reads
+    query: |
+      SELECT TOP 10
+        CONVERT(VARCHAR(32), q.query_hash, 2) AS query_hash,
+        CAST(rs.avg_logical_io_reads AS BIGINT) AS avg_logical_io_reads
+      FROM sys.query_store_runtime_stats rs
+      JOIN sys.query_store_plan p ON rs.plan_id = p.plan_id
+      JOIN sys.query_store_query q ON p.query_id = q.query_id
+      WHERE rs.last_execution_time > DATEADD(hour, -1, GETUTCDATE())
+      ORDER BY rs.avg_logical_io_reads DESC
+
+  - metric_name: mssql_query_store_execution_count
+    type: gauge
+    help: "Query Store: Top 쿼리 실행 횟수 (최근 1시간)"
+    key_labels:
+      - query_hash
+    values:
+      - count_executions
+    query: |
+      SELECT TOP 10
+        CONVERT(VARCHAR(32), q.query_hash, 2) AS query_hash,
+        CAST(SUM(rs.count_executions) AS BIGINT) AS count_executions
+      FROM sys.query_store_runtime_stats rs
+      JOIN sys.query_store_plan p ON rs.plan_id = p.plan_id
+      JOIN sys.query_store_query q ON p.query_id = q.query_id
+      WHERE rs.last_execution_time > DATEADD(hour, -1, GETUTCDATE())
+      GROUP BY q.query_hash
+      ORDER BY SUM(rs.count_executions) DESC
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Memory 상태
+  # Buffer Pool, Plan Cache, 기타 메모리 사용량
+  # ─────────────────────────────────────────────────────────────────────────
+  - metric_name: mssql_memory_clerks_kb
+    type: gauge
+    help: "Memory Clerk별 사용량 (KB)"
+    key_labels:
+      - clerk_type
+    values:
+      - size_kb
+    query: |
+      SELECT 
+        type AS clerk_type,
+        SUM(pages_kb) AS size_kb
+      FROM sys.dm_os_memory_clerks
+      GROUP BY type
+      HAVING SUM(pages_kb) > 10240  -- 10MB 이상만
+      ORDER BY SUM(pages_kb) DESC
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 현재 실행 중인 요청 상태
+  # ─────────────────────────────────────────────────────────────────────────
+  - metric_name: mssql_active_requests_by_status
+    type: gauge
+    help: "상태별 활성 요청 수"
+    key_labels:
+      - status
+    values:
+      - count
+    query: |
+      SELECT 
+        status,
+        COUNT(*) AS count
+      FROM sys.dm_exec_requests
+      WHERE session_id > 50  -- 시스템 세션 제외
+      GROUP BY status
