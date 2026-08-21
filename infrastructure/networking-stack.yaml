@@ -1,28 +1,24 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  VPC + 네트워킹 CloudFormation 스택
-  3개 AZ에 걸쳐 Public, Private, Database 서브넷을 생성합니다.
-  NAT Gateway는 비용 최적화를 위해 단일로 구성합니다.
+  VPC + Networking CloudFormation Stack
+  Creates Public, Private, Database subnets across 3 AZs.
+  Single NAT Gateway for cost optimization.
 
 # ==============================================================================
 # Parameters
 # ==============================================================================
 Parameters:
   EnvironmentName:
-    Description: 환경 이름 (예: dev, staging, prod)
+    Description: 'Environment name prefix for resource naming'
     Type: String
-    AllowedValues:
-      - dev
-      - staging
-      - prod
-    Default: dev
+    Default: integrated-db-monitoring
 
   VpcCidr:
-    Description: VPC CIDR 블록
+    Description: 'VPC CIDR block'
     Type: String
     Default: '10.0.0.0/16'
     AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
-    ConstraintDescription: 유효한 CIDR 형식이어야 합니다 (예: 10.0.0.0/16)
+    ConstraintDescription: 'Must be a valid CIDR block (e.g. 10.0.0.0/16)'
 
 # ==============================================================================
 # Resources
@@ -44,7 +40,7 @@ Resources:
           Value: !Ref EnvironmentName
 
   # ----------------------------------------------------------------------------
-  # Internet Gateway — 퍼블릭 서브넷의 인터넷 통신을 위한 게이트웨이
+  # Internet Gateway —      
   # ----------------------------------------------------------------------------
   InternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -62,7 +58,7 @@ Resources:
       VpcId: !Ref VPC
 
   # ----------------------------------------------------------------------------
-  # NAT Gateway — 프라이빗 서브넷의 아웃바운드 인터넷 통신용 (단일, 비용 최적화)
+  # NAT Gateway —      (,  )
   # ----------------------------------------------------------------------------
   NatGatewayEIP:
     Type: AWS::EC2::EIP
@@ -85,7 +81,7 @@ Resources:
           Value: !Ref EnvironmentName
 
   # ----------------------------------------------------------------------------
-  # Public Subnets — 3개 AZ에 걸친 퍼블릭 서브넷
+  # Public Subnets — 3 AZ   
   # ----------------------------------------------------------------------------
   PublicSubnet1:
     Type: AWS::EC2::Subnet
@@ -133,7 +129,7 @@ Resources:
           Value: '1'
 
   # ----------------------------------------------------------------------------
-  # Private Subnets — 3개 AZ에 걸친 프라이빗 서브넷 (애플리케이션 워크로드)
+  # Private Subnets — 3 AZ    ( )
   # ----------------------------------------------------------------------------
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
@@ -181,7 +177,7 @@ Resources:
           Value: '1'
 
   # ----------------------------------------------------------------------------
-  # Database Subnets — 3개 AZ에 걸친 데이터베이스 전용 서브넷
+  # Database Subnets — 3 AZ    
   # ----------------------------------------------------------------------------
   DatabaseSubnet1:
     Type: AWS::EC2::Subnet
@@ -223,7 +219,7 @@ Resources:
           Value: !Ref EnvironmentName
 
   # ----------------------------------------------------------------------------
-  # Route Tables — 퍼블릭 라우트 테이블 (IGW 연결)
+  # Route Tables —    (IGW )
   # ----------------------------------------------------------------------------
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -262,7 +258,7 @@ Resources:
       SubnetId: !Ref PublicSubnet3
 
   # ----------------------------------------------------------------------------
-  # Route Tables — 프라이빗 라우트 테이블 (NAT Gateway 연결)
+  # Route Tables —    (NAT Gateway )
   # ----------------------------------------------------------------------------
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
@@ -299,7 +295,7 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable
       SubnetId: !Ref PrivateSubnet3
 
-  # 데이터베이스 서브넷도 프라이빗 라우트 테이블 사용 (인터넷 접근 차단)
+  #       (  )
   DatabaseSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -329,7 +325,7 @@ Outputs:
       Name: !Sub '${EnvironmentName}-VpcId'
 
   PublicSubnets:
-    Description: 퍼블릭 서브넷 목록 (쉼표 구분)
+    Description: Resource description
     Value: !Join
       - ','
       - - !Ref PublicSubnet1
@@ -339,7 +335,7 @@ Outputs:
       Name: !Sub '${EnvironmentName}-PublicSubnets'
 
   PrivateSubnets:
-    Description: 프라이빗 서브넷 목록 (쉼표 구분)
+    Description: Resource description
     Value: !Join
       - ','
       - - !Ref PrivateSubnet1
@@ -349,7 +345,7 @@ Outputs:
       Name: !Sub '${EnvironmentName}-PrivateSubnets'
 
   DatabaseSubnets:
-    Description: 데이터베이스 서브넷 목록 (쉼표 구분)
+    Description: Resource description
     Value: !Join
       - ','
       - - !Ref DatabaseSubnet1
@@ -359,7 +355,7 @@ Outputs:
       Name: !Sub '${EnvironmentName}-DatabaseSubnets'
 
   PrivateSubnetCidrs:
-    Description: 프라이빗 서브넷 CIDR 목록 (쉼표 구분, 보안그룹 인바운드 설정용)
+    Description: Resource description
     Value: '10.0.11.0/24,10.0.12.0/24,10.0.13.0/24'
     Export:
       Name: !Sub '${EnvironmentName}-PrivateSubnetCidrs'

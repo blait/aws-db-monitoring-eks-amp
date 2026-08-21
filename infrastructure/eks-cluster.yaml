@@ -1,82 +1,82 @@
 # ==============================================================================
-# eksctl ClusterConfig — envsubst 템플릿
-# 사용법: envsubst < eks-cluster.yaml | eksctl create cluster -f -
+# eksctl ClusterConfig - envsubst template
+# Usage: envsubst < eks-cluster.yaml | eksctl create cluster -f -
 #
-# 필요한 환경변수:
-#   CLUSTER_NAME       - EKS 클러스터 이름
-#   AWS_REGION         - AWS 리전 (예: ap-northeast-2)
-#   EKS_VERSION        - EKS 버전 (예: 1.29)
-#   VPC_ID             - 기존 VPC ID
-#   PRIVATE_SUBNET_1   - 프라이빗 서브넷 1 ID (AZ-a)
-#   PRIVATE_SUBNET_2   - 프라이빗 서브넷 2 ID (AZ-b)
-#   PRIVATE_SUBNET_3   - 프라이빗 서브넷 3 ID (AZ-c)
+# Required environment variables:
+#   CLUSTER_NAME       - EKS cluster name
+#   AWS_REGION         - AWS region (e.g. ap-northeast-2)
+#   EKS_VERSION        - EKS version (e.g. 1.31)
+#   VPC_ID             - Existing VPC ID
+#   PRIVATE_SUBNET_1   - Private subnet 1 ID (AZ-a)
+#   PRIVATE_SUBNET_2   - Private subnet 2 ID (AZ-b)
+#   PRIVATE_SUBNET_3   - Private subnet 3 ID (AZ-c)
 # ==============================================================================
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
-# 클러스터 메타데이터
+# Cluster metadata
 metadata:
   name: ${CLUSTER_NAME}
   region: ${AWS_REGION}
-  version: "${EKS_VERSION}"
+  version: "1.31"
 
-# 기존 VPC 및 프라이빗 서브넷 사용 설정
+# Use existing VPC and private subnets
 vpc:
   id: ${VPC_ID}
   subnets:
     private:
-      # AZ-a 프라이빗 서브넷
+      # AZ-a private subnet
       private-az1:
         id: ${PRIVATE_SUBNET_1}
-      # AZ-b 프라이빗 서브넷
+      # AZ-b private subnet
       private-az2:
         id: ${PRIVATE_SUBNET_2}
-      # AZ-c 프라이빗 서브넷
+      # AZ-c private subnet
       private-az3:
         id: ${PRIVATE_SUBNET_3}
 
-# IAM 설정 — OIDC 프로바이더 활성화 (IRSA용)
+# IAM - enable OIDC provider (for IRSA)
 iam:
   withOIDC: true
 
-# 관리형 노드 그룹 — 모니터링 워크로드용
+# Managed node group for monitoring workloads
 managedNodeGroups:
   - name: monitoring-ng
     instanceType: m5.large
     desiredCapacity: 3
     minSize: 2
     maxSize: 5
-    # 프라이빗 서브넷에서만 노드 실행 (보안 강화)
+    # Run nodes in private subnets only (security)
     privateNetworking: true
-    # 볼륨 설정
+    # Volume settings
     volumeSize: 80
     volumeType: gp3
-    # IAM 애드온 정책
+    # IAM addon policies
     iam:
       withAddonPolicies:
-        # CloudWatch 로그 및 메트릭 전송용
+        # For CloudWatch logs and metrics
         cloudWatch: true
-        # ALB Ingress Controller 사용을 위한 정책
+        # Policy for ALB Ingress Controller
         albIngress: true
-    # 노드 레이블
+    # Node labels
     labels:
       role: monitoring
       environment: production
-    # 노드 태그
+    # Node tags
     tags:
       nodegroup-role: monitoring
 
-# EKS 애드온 — 핵심 네트워킹 및 스토리지 컴포넌트
+# EKS Addons - core networking and storage
 addons:
-  # VPC CNI — 파드 네트워킹 (VPC 네이티브 IP 할당)
+  # VPC CNI - Pod networking (VPC native IP assignment)
   - name: vpc-cni
     resolveConflicts: overwrite
-  # CoreDNS — 클러스터 내부 DNS 서비스
+  # CoreDNS - Cluster internal DNS
   - name: coredns
     resolveConflicts: overwrite
-  # kube-proxy — 서비스 네트워킹 (iptables/IPVS 규칙 관리)
+  # kube-proxy - Service networking (iptables/IPVS rules)
   - name: kube-proxy
     resolveConflicts: overwrite
-  # EBS CSI Driver — 영구 볼륨 프로비저닝
+  # EBS CSI Driver - Persistent volume provisioning
   - name: aws-ebs-csi-driver
     resolveConflicts: overwrite

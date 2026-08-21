@@ -1,14 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  통합 DB 모니터링 워크숍 - 데이터베이스 인프라 스택
+  Integrated DB Monitoring - Database Infrastructure Stack
   Aurora MySQL (Writer + Reader x2), Aurora PostgreSQL (Writer + Reader x2), 
-  RDS SQL Server, 아키텍처 다이어그램과 완전 일치
+  RDS SQL Server - matches architecture diagram
 
 Parameters:
   EnvironmentName:
     Type: String
     Default: integrated-db-monitoring
-    Description: 환경 이름 (리소스 태깅용)
+    Description: Environment name for resource tagging
   
   VpcId:
     Type: AWS::EC2::VPC::Id
@@ -16,150 +16,150 @@ Parameters:
   
   DatabaseSubnets:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: 데이터베이스 서브넷 목록
+    Description: Database subnet list
   
   PrivateSubnetCidrs:
     Type: CommaDelimitedList
-    Description: Private 서브넷 CIDR 목록 (보안그룹 인바운드 규칙용)
+    Description: Private subnet CIDR list (for security group inbound rules)
   
   PublicSubnets:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Public 서브넷 목록
+    Description: Public subnet list
   
-  # Aurora MySQL 설정
+  # Aurora MySQL Settings
   MySQLMasterUsername:
     Type: String
     Default: admin
-    Description: Aurora MySQL 마스터 사용자명
+    Description: Aurora MySQL master username
   
   MySQLMasterPassword:
     Type: String
     Default: AdminAdmin123!
     NoEcho: true
-    Description: Aurora MySQL 마스터 패스워드
+    Description: Aurora MySQL master password
   
-  # Aurora PostgreSQL 설정
+  # Aurora PostgreSQL Settings
   PostgreSQLMasterUsername:
     Type: String
     Default: postgres
-    Description: Aurora PostgreSQL 마스터 사용자명
+    Description: Aurora PostgreSQL master username
   
   PostgreSQLMasterPassword:
     Type: String
     Default: AdminAdmin123!
     NoEcho: true
-    Description: Aurora PostgreSQL 마스터 패스워드
+    Description: Aurora PostgreSQL master password
   
-  # SQL Server 설정
+  # SQL Server Settings
   SQLServerMasterUsername:
     Type: String
     Default: admin
-    Description: SQL Server 마스터 사용자명
+    Description: SQL Server master username
   
   SQLServerMasterPassword:
     Type: String
     Default: AdminAdmin123!
     NoEcho: true
-    Description: SQL Server 마스터 패스워드
+    Description: SQL Server master password
 
 Resources:
   #############################################
-  # 보안 그룹
+  # Security Groups
   #############################################
   
-  # Aurora MySQL 보안 그룹
+  # Aurora MySQL Security Group
   MySQLSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Aurora MySQL 클러스터 보안 그룹
+      GroupDescription: Aurora MySQL cluster security group
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 1에서 MySQL 접근 허용
+          Description: Allow MySQL access from Private Subnet 1
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 2에서 MySQL 접근 허용
+          Description: Allow MySQL access from Private Subnet 2
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 3에서 MySQL 접근 허용
+          Description: Allow MySQL access from Private Subnet 3
       Tags:
         - Key: Name
           Value: !Sub "${EnvironmentName}-mysql-sg"
   
-  # Aurora PostgreSQL 보안 그룹
+  # Aurora PostgreSQL Security Group
   PostgreSQLSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Aurora PostgreSQL 클러스터 보안 그룹
+      GroupDescription: Aurora PostgreSQL cluster security group
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
           CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 1에서 PostgreSQL 접근 허용
+          Description: Allow PostgreSQL access from Private Subnet 1
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
           CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 2에서 PostgreSQL 접근 허용
+          Description: Allow PostgreSQL access from Private Subnet 2
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
           CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 3에서 PostgreSQL 접근 허용
+          Description: Allow PostgreSQL access from Private Subnet 3
       Tags:
         - Key: Name
           Value: !Sub "${EnvironmentName}-postgresql-sg"
   
-  # SQL Server 보안 그룹
+  # SQL Server Security Group
   SQLServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: RDS SQL Server 보안 그룹
+      GroupDescription: RDS SQL Server security group
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 1433
           ToPort: 1433
           CidrIp: !Select [0, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 1에서 SQL Server 접근 허용
+          Description: Allow SQL Server access from Private Subnet 1
         - IpProtocol: tcp
           FromPort: 1433
           ToPort: 1433
           CidrIp: !Select [1, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 2에서 SQL Server 접근 허용
+          Description: Allow SQL Server access from Private Subnet 2
         - IpProtocol: tcp
           FromPort: 1433
           ToPort: 1433
           CidrIp: !Select [2, !Ref PrivateSubnetCidrs]
-          Description: Private Subnet 3에서 SQL Server 접근 허용
+          Description: Allow SQL Server access from Private Subnet 3
       Tags:
         - Key: Name
           Value: !Sub "${EnvironmentName}-sqlserver-sg"
 
   #############################################
-  # DB 서브넷 그룹
+  # DB Subnet Group
   #############################################
   
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupDescription: 데이터베이스 서브넷 그룹
+      DBSubnetGroupDescription: Database subnet group for monitoring workshop
       SubnetIds: !Ref DatabaseSubnets
       Tags:
         - Key: Name
           Value: !Sub "${EnvironmentName}-db-subnet-group"
 
   #############################################
-  # Aurora MySQL 클러스터 (Writer 1 + Reader 2 = 3개 인스턴스)
+  # Aurora MySQL Cluster
   #############################################
   
   MySQLCluster:
@@ -181,7 +181,7 @@ Resources:
         - Key: Engine
           Value: aurora-mysql
   
-  # MySQL Writer 인스턴스
+  # MySQL Writer Instance
   MySQLInstance1:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -196,7 +196,7 @@ Resources:
         - Key: Role
           Value: writer
   
-  # MySQL Reader 인스턴스 1
+  # MySQL Reader Instance 1
   MySQLInstance2:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -211,7 +211,7 @@ Resources:
         - Key: Role
           Value: reader
   
-  # MySQL Reader 인스턴스 2 (신규 추가 - 아키텍처 일치)
+  # MySQL Reader Instance 2 (added to match architecture)
   MySQLInstance3:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -227,7 +227,7 @@ Resources:
           Value: reader
 
   #############################################
-  # Aurora PostgreSQL 클러스터 (Writer 1 + Reader 2 = 3개 인스턴스)
+  # Aurora PostgreSQL Cluster
   #############################################
   
   PostgreSQLCluster:
@@ -249,7 +249,7 @@ Resources:
         - Key: Engine
           Value: aurora-postgresql
   
-  # PostgreSQL Writer 인스턴스
+  # PostgreSQL Writer Instance
   PostgreSQLInstance1:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -264,7 +264,7 @@ Resources:
         - Key: Role
           Value: writer
   
-  # PostgreSQL Reader 인스턴스 1
+  # PostgreSQL Reader Instance 1
   PostgreSQLInstance2:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -279,7 +279,7 @@ Resources:
         - Key: Role
           Value: reader
   
-  # PostgreSQL Reader 인스턴스 2 (신규 추가 - 아키텍처 일치)
+  # PostgreSQL Reader Instance 2 (added to match architecture)
   PostgreSQLInstance3:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -295,7 +295,7 @@ Resources:
           Value: reader
 
   #############################################
-  # RDS SQL Server (단일 인스턴스)
+  # RDS SQL Server
   #############################################
   
   SQLServerInstance:
@@ -321,14 +321,14 @@ Resources:
           Value: sqlserver
 
   #############################################
-  # Secrets Manager (Exporter 인증용)
+  # Secrets Manager (for Exporter authentication)
   #############################################
   
   MySQLMonitoringSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "${EnvironmentName}/mysql/monitoring"
-      Description: MySQL Exporter 모니터링 계정 정보
+      Description: MySQL Exporter monitoring account credentials
       SecretString: !Sub |
         {
           "username": "exporter",
@@ -342,7 +342,7 @@ Resources:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "${EnvironmentName}/postgresql/monitoring"
-      Description: PostgreSQL Exporter 모니터링 계정 정보
+      Description: PostgreSQL Exporter monitoring account credentials
       SecretString: !Sub |
         {
           "username": "exporter",
@@ -356,7 +356,7 @@ Resources:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "${EnvironmentName}/sqlserver/monitoring"
-      Description: SQL Server Exporter 모니터링 계정 정보
+      Description: SQL Server Exporter monitoring account credentials
       SecretString: !Sub |
         {
           "username": "exporter",
@@ -367,72 +367,72 @@ Resources:
         }
 
 Outputs:
-  # Aurora MySQL 엔드포인트
+  # Aurora MySQL Endpoints
   MySQLClusterEndpoint:
-    Description: Aurora MySQL 클러스터 엔드포인트 (Writer)
+    Description: Aurora MySQL cluster endpoint (Writer)
     Value: !GetAtt MySQLCluster.Endpoint.Address
     Export:
       Name: !Sub "${EnvironmentName}-mysql-cluster-endpoint"
   
   MySQLClusterReaderEndpoint:
-    Description: Aurora MySQL 리더 엔드포인트
+    Description: Aurora MySQL reader endpoint
     Value: !GetAtt MySQLCluster.ReadEndpoint.Address
     Export:
       Name: !Sub "${EnvironmentName}-mysql-reader-endpoint"
   
   MySQLInstance1Endpoint:
-    Description: Aurora MySQL Writer 인스턴스 엔드포인트
+    Description: Aurora MySQL Writer instance endpoint
     Value: !GetAtt MySQLInstance1.Endpoint.Address
   
   MySQLInstance2Endpoint:
-    Description: Aurora MySQL Reader 1 인스턴스 엔드포인트
+    Description: Aurora MySQL Reader 1 instance endpoint
     Value: !GetAtt MySQLInstance2.Endpoint.Address
   
   MySQLInstance3Endpoint:
-    Description: Aurora MySQL Reader 2 인스턴스 엔드포인트
+    Description: Aurora MySQL Reader 2 instance endpoint
     Value: !GetAtt MySQLInstance3.Endpoint.Address
   
-  # Aurora PostgreSQL 엔드포인트
+  # Aurora PostgreSQL Endpoints
   PostgreSQLClusterEndpoint:
-    Description: Aurora PostgreSQL 클러스터 엔드포인트 (Writer)
+    Description: Aurora PostgreSQL cluster endpoint (Writer)
     Value: !GetAtt PostgreSQLCluster.Endpoint.Address
     Export:
       Name: !Sub "${EnvironmentName}-postgresql-cluster-endpoint"
   
   PostgreSQLClusterReaderEndpoint:
-    Description: Aurora PostgreSQL 리더 엔드포인트
+    Description: Aurora PostgreSQL reader endpoint
     Value: !GetAtt PostgreSQLCluster.ReadEndpoint.Address
     Export:
       Name: !Sub "${EnvironmentName}-postgresql-reader-endpoint"
   
   PostgreSQLInstance1Endpoint:
-    Description: Aurora PostgreSQL Writer 인스턴스 엔드포인트
+    Description: Aurora PostgreSQL Writer instance endpoint
     Value: !GetAtt PostgreSQLInstance1.Endpoint.Address
   
   PostgreSQLInstance2Endpoint:
-    Description: Aurora PostgreSQL Reader 1 인스턴스 엔드포인트
+    Description: Aurora PostgreSQL Reader 1 instance endpoint
     Value: !GetAtt PostgreSQLInstance2.Endpoint.Address
   
   PostgreSQLInstance3Endpoint:
-    Description: Aurora PostgreSQL Reader 2 인스턴스 엔드포인트
+    Description: Aurora PostgreSQL Reader 2 instance endpoint
     Value: !GetAtt PostgreSQLInstance3.Endpoint.Address
   
-  # SQL Server 엔드포인트
+  # SQL Server Endpoint
   SQLServerInstanceEndpoint:
-    Description: RDS SQL Server 인스턴스 엔드포인트
+    Description: RDS SQL Server instance endpoint
     Value: !GetAtt SQLServerInstance.Endpoint.Address
     Export:
       Name: !Sub "${EnvironmentName}-sqlserver-endpoint"
   
-  # 보안 그룹
+  # Security Groups
   MySQLSecurityGroupId:
-    Description: MySQL 보안 그룹 ID
+    Description: MySQL security group ID
     Value: !Ref MySQLSecurityGroup
   
   PostgreSQLSecurityGroupId:
-    Description: PostgreSQL 보안 그룹 ID
+    Description: PostgreSQL security group ID
     Value: !Ref PostgreSQLSecurityGroup
   
   SQLServerSecurityGroupId:
-    Description: SQL Server 보안 그룹 ID
+    Description: SQL Server security group ID
     Value: !Ref SQLServerSecurityGroup

@@ -125,9 +125,9 @@ trap 'handle_error ${LINENO} $?' ERR
 # 설정 변수
 #==============================================================================
 WORKSHOP_NAME="${WORKSHOP_NAME:-integrated-db-monitoring}"
-AWS_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null || echo 'ap-northeast-2')}"
+export AWS_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null || echo 'ap-northeast-2')}"
 VPC_CIDR="${VPC_CIDR:-10.0.0.0/16}"
-EKS_VERSION="1.30"
+export EKS_VERSION="1.31"
 SKIP_INFRA=false
 SKIP_DB=false
 DRY_RUN=false
@@ -175,7 +175,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 파생 변수
-CLUSTER_NAME="${WORKSHOP_NAME}-eks"
+export CLUSTER_NAME="${WORKSHOP_NAME}-eks"
 ACCOUNT_ID=""
 OIDC_PROVIDER=""
 
@@ -900,7 +900,7 @@ cat > .deploy-state.env << EOF
 WORKSHOP_NAME=${WORKSHOP_NAME}
 AWS_REGION=${AWS_REGION}
 ACCOUNT_ID=${ACCOUNT_ID}
-CLUSTER_NAME=${CLUSTER_NAME}
+export CLUSTER_NAME=${CLUSTER_NAME}
 AMP_WORKSPACE_ID=${AMP_WORKSPACE_ID}
 AMG_WS_ID=${AMG_WS_ID}
 AMG_ENDPOINT=${AMG_ENDPOINT}
