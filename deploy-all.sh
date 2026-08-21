@@ -388,9 +388,9 @@ if [ "$SKIP_DB" = false ] && [ "$SKIP_INFRA" = false ]; then
         --parameters \
             ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
             ParameterKey=VpcId,ParameterValue=${VPC_ID} \
-            ParameterKey=DatabaseSubnets,ParameterValue=\"${DATABASE_SUBNETS}\" \
-            ParameterKey=PrivateSubnetCidrs,ParameterValue=\"${PRIVATE_SUBNET_CIDRS}\" \
-            ParameterKey=PublicSubnets,ParameterValue=\"${PUBLIC_SUBNETS}\" \
+            ParameterKey=DatabaseSubnets,ParameterValue="${DATABASE_SUBNETS//,/\\,}" \
+            ParameterKey=PrivateSubnetCidrs,ParameterValue="${PRIVATE_SUBNET_CIDRS//,/\\,}" \
+            ParameterKey=PublicSubnets,ParameterValue="${PUBLIC_SUBNETS//,/\\,}" \
             ParameterKey=SQLServerMasterUsername,ParameterValue=admin \
             ParameterKey=SQLServerMasterPassword,ParameterValue=AdminAdmin123! \
         --capabilities CAPABILITY_IAM \
@@ -404,8 +404,8 @@ if [ "$SKIP_DB" = false ] && [ "$SKIP_INFRA" = false ]; then
         --parameters \
             ParameterKey=EnvironmentName,ParameterValue=${WORKSHOP_NAME} \
             ParameterKey=VpcId,ParameterValue=${VPC_ID} \
-            ParameterKey=DatabaseSubnets,ParameterValue=\"${DATABASE_SUBNETS}\" \
-            ParameterKey=PrivateSubnetCidrs,ParameterValue=\"${PRIVATE_SUBNET_CIDRS}\" \
+            ParameterKey=DatabaseSubnets,ParameterValue="${DATABASE_SUBNETS//,/\\,}" \
+            ParameterKey=PrivateSubnetCidrs,ParameterValue="${PRIVATE_SUBNET_CIDRS//,/\\,}" \
         --capabilities CAPABILITY_IAM \
         --region ${AWS_REGION}
 
@@ -731,7 +731,7 @@ show_elapsed $STEP_START
 #==============================================================================
 # Step 6: 모니터링 스택 배포 (Helm)
 #==============================================================================
-log_step "모니터링 스택 배포 (ADOT + Exporters)"
+log_step "모니터링 스택 배포 (Prometheus Server + Exporters)"
 STEP_START=$(date +%s)
 
 # observability 네임스페이스 생성
@@ -741,7 +741,6 @@ kubectl create namespace observability 2>/dev/null || true
 # Helm repos 추가
 log_info "Helm 레포지토리 추가..."
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
-helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts 2>/dev/null || true
 helm repo update
 
 # DB Discovery 실행 (Aurora + RDS 인스턴스 자동 탐색)
@@ -751,16 +750,33 @@ if [ -f "./scripts/db-discovery.sh" ]; then
     ./scripts/db-discovery.sh
 fi
 
-# 6-1: ADOT Collector 배포
-log_info "ADOT Collector 배포..."
-helm upgrade --install adot-collector open-telemetry/opentelemetry-collector \
+# 6-1: Prometheus Server 배포 (ADOT Collector 대신 사용)
+# ─────────────────────────────────────────────────────────────────────────────
+# 기존 ADOT Collector 방식은 주석 처리하고 Prometheus Server로 교체합니다.
+# Prometheus Server가 직접 exporter를 scrape하고 AMP로 remote_write합니다.
+# ─────────────────────────────────────────────────────────────────────────────
+# [주석처리] 기존 ADOT Collector 배포 코드:
+# helm upgrade --install adot-collector open-telemetry/opentelemetry-collector \
+#     --namespace observability \
+#     --values helm-charts/adot-collector/values.yaml \
+#     --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${ADOT_ROLE_ARN}" \
+#     --wait --timeout 5m
+
+log_info "Prometheus Server 배포 (AMP Remote Write 연동)..."
+helm upgrade --install prometheus prometheus-community/prometheus \
     --namespace observability \
-    --values helm-charts/adot-collector/values.yaml \
-    --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="${ADOT_ROLE_ARN}" \
-    --set config.exporters.prometheusremotewrite.endpoint="${AMP_ENDPOINT}" \
+    --set server.remoteWrite[0].url="${AMP_ENDPOINT}" \
+    --set server.remoteWrite[0].sigv4.region=${AWS_REGION} \
+    --set serviceAccounts.server.name=adot-collector \
+    --set serviceAccounts.server.annotations."eks\.amazonaws\.com/role-arn"="${ADOT_ROLE_ARN}" \
+    --set server.persistentVolume.enabled=false \
+    --set alertmanager.enabled=false \
+    --set kube-state-metrics.enabled=false \
+    --set prometheus-node-exporter.enabled=false \
+    --set prometheus-pushgateway.enabled=false \
     --wait --timeout 5m
 
-log_success "ADOT Collector 배포 완료"
+log_success "Prometheus Server 배포 완료"
 
 # 6-2: MySQL Exporter 배포
 log_info "MySQL Exporter 배포..."
@@ -776,6 +792,7 @@ log_info "PostgreSQL Exporter 배포..."
 helm upgrade --install postgres-exporter prometheus-community/prometheus-postgres-exporter \
     --namespace observability \
     --values helm-charts/postgres-exporter/values.yaml \
+    --set-string config.datasource.port="5432" \
     --wait --timeout 3m
 
 log_success "PostgreSQL Exporter 배포 완료"
@@ -790,15 +807,86 @@ helm upgrade --install redis-exporter prometheus-community/prometheus-redis-expo
 
 log_success "Redis Exporter 배포 완료"
 
-# 6-5: MS SQL Exporter 배포
-log_info "MS SQL Exporter 배포..."
-helm upgrade --install mssql-exporter ./helm-charts/mssql-exporter \
-    --namespace observability \
-    --set "mssql.host=${SQLSERVER_ENDPOINT}" \
-    --set "mssql.port=1433" \
-    --set "mssql.username=admin" \
-    --set "mssql.password=AdminAdmin123!" \
-    --wait --timeout 3m
+# 6-5: MS SQL Exporter 배포 (kubectl apply 방식)
+# ─────────────────────────────────────────────────────────────────────────────
+# MSSQL Exporter는 공식 Helm chart가 없으므로 kubectl apply로 직접 배포합니다.
+# 참고: 프로덕션 환경에서는 awaragi/prometheus-mssql-exporter 이미지를
+#       ECR에 복사한 후 사용하는 것을 권장합니다.
+#   예) aws ecr get-login-password | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+#       docker pull awaragi/prometheus-mssql-exporter:0.7.1
+#       docker tag awaragi/prometheus-mssql-exporter:0.7.1 ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${WORKSHOP_NAME}/mssql-exporter:0.7.1
+#       docker push ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${WORKSHOP_NAME}/mssql-exporter:0.7.1
+# ─────────────────────────────────────────────────────────────────────────────
+log_info "MS SQL Exporter 배포 (kubectl apply)..."
+
+cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mssql-exporter
+  namespace: observability
+  labels:
+    app: mssql-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mssql-exporter
+  template:
+    metadata:
+      labels:
+        app: mssql-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: mssql-exporter
+        image: awaragi/prometheus-mssql-exporter:0.7.1
+        ports:
+        - containerPort: 4000
+          name: metrics
+        env:
+        - name: SERVER
+          value: "${SQLSERVER_ENDPOINT}"
+        - name: PORT
+          value: "1433"
+        - name: USERNAME
+          value: "admin"
+        - name: PASSWORD
+          value: "AdminAdmin123!"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mssql-exporter
+  namespace: observability
+  labels:
+    app: mssql-exporter
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4000"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4000
+    targetPort: 4000
+    protocol: TCP
+    name: metrics
+  selector:
+    app: mssql-exporter
+EOF
+
+# MSSQL Exporter Pod 준비 대기
+kubectl rollout status deployment/mssql-exporter -n observability --timeout=3m
 
 log_success "MS SQL Exporter 배포 완료"
 

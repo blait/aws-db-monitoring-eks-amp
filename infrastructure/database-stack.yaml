@@ -167,7 +167,7 @@ Resources:
     Properties:
       DBClusterIdentifier: !Sub "${EnvironmentName}-mysql-cluster"
       Engine: aurora-mysql
-      EngineVersion: "8.0.mysql_aurora.3.05.2"
+      EngineVersion: "8.0.mysql_aurora.3.10.5"
       MasterUsername: !Ref MySQLMasterUsername
       MasterUserPassword: !Ref MySQLMasterPassword
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
@@ -235,7 +235,7 @@ Resources:
     Properties:
       DBClusterIdentifier: !Sub "${EnvironmentName}-postgresql-cluster"
       Engine: aurora-postgresql
-      EngineVersion: "15.4"
+      EngineVersion: "17.7"
       MasterUsername: !Ref PostgreSQLMasterUsername
       MasterUserPassword: !Ref PostgreSQLMasterPassword
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
@@ -303,14 +303,14 @@ Resources:
     Properties:
       DBInstanceIdentifier: !Sub "${EnvironmentName}-sqlserver"
       Engine: sqlserver-ex
-      EngineVersion: "16.00.4165.4.v1"
-      DBInstanceClass: db.t3.xlarge
+      EngineVersion: "16.00.4175.1.v1"
+      DBInstanceClass: db.t3.medium
       MasterUsername: !Ref SQLServerMasterUsername
       MasterUserPassword: !Ref SQLServerMasterPassword
       AllocatedStorage: 100
       StorageType: gp3
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
-      VpcSecurityGroupIds:
+      VPCSecurityGroups:
         - !Ref SQLServerSecurityGroup
       MultiAZ: false
       LicenseModel: license-included
