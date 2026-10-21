@@ -14,7 +14,7 @@ import urllib.request
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "rca"))
 
 from analysis import (DbEvidence, Dependency, EngineReading, Golden, SpanStat, Stat, parse_identifier,  # noqa: E402
-                      scale_cpu)
+                      scale_cpu, service_name)
 from signals import ENGINE_ALIASES, ENGINE_SIGNALS, promql  # noqa: E402
 
 KIND = {1: "INTERNAL", 2: "SERVER", 3: "CLIENT", 4: "PRODUCER", 5: "CONSUMER"}
@@ -108,8 +108,7 @@ def operation(s):
 def remote_service(s):
     a = s["attrs"]
     r = a.get("aws.remote.service") or a.get("db.system") or a.get("server.address") or a.get("net.peer.name") or "?"
-    r = str(r).split(":")[0]
-    return r
+    return service_name(str(r))
 
 
 class LocalCollector:

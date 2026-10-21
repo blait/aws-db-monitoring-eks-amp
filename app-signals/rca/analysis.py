@@ -8,6 +8,7 @@
   5) 규칙으로 원인 가설을 만들고, 근거 계층 수(앱 지표·의존성 지표·트레이스·엔진 지표)로 확신도를 매김
 """
 import datetime as dt
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -236,6 +237,18 @@ def parse_identifier(ident):
     if len(parts) >= 2:
         return parts[0], parts[1]
     return None, parts[0] if parts else None
+
+
+_PORT = re.compile(r":\d+$")
+_K8S_DNS = re.compile(r"^([a-z0-9](?:[-a-z0-9]*[a-z0-9])?)\.[a-z0-9-]+\.svc(?:\.cluster\.local)?\.?$")
+
+
+def service_name(remote):
+    """HTTP 호출의 원격 서비스 이름 → 하위 서비스 이름. ADOT는 URL의 host:port를 그대로 남기므로
+    (실제 EKS 트레이스: '<svc>.<ns>.svc.cluster.local:8080') 포트와 쿠버네티스 DNS 접미사를 뗀다."""
+    host = _PORT.sub("", remote or "")
+    m = _K8S_DNS.match(host)
+    return m.group(1) if m else host
 
 
 def hour_bounds(start, end):

@@ -9,7 +9,7 @@ Application Signals의 골든 지표·의존성 지표에서 시작해, 가장 �
   python rca.py --environment eks:… --service order-api --operation "POST /orders" \\
       --start 2026-10-22T05:10:00Z --end 2026-10-22T05:20:00Z --amp-workspace-id ws-… --output report.md
 
-필요한 권한(읽기 전용): cloudwatch:GetMetricData, application-signals:ListServiceDependencies,
+필요한 권한(읽기 전용): cloudwatch:GetMetricData, application-signals:ListServices·ListServiceDependencies,
 logs:StartQuery/GetQueryResults(aws/spans), xray:GetTraceSummaries, rds:DescribeDBClusters/DescribeDBInstances,
 elasticache:DescribeReplicationGroups, aps:QueryMetrics
 """

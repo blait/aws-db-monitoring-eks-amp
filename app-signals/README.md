@@ -77,7 +77,7 @@ python app-signals/rca/rca.py --environment eks:${CLUSTER_NAME}/shop --service o
 # --format json 은 자동화·에이전트 입력용
 ```
 
-필요한 권한(읽기 전용): `cloudwatch:GetMetricData`, `application-signals:ListServiceDependencies`,
+필요한 권한(읽기 전용): `cloudwatch:GetMetricData`, `application-signals:ListServices`·`ListServiceDependencies`,
 `logs:StartQuery`·`logs:GetQueryResults`(aws/spans), `xray:GetTraceSummaries`, `rds:DescribeDBClusters`·`DescribeDBInstances`,
 `elasticache:DescribeReplicationGroups`, `aps:QueryMetrics`. 권한이 없거나 꺼진 출처는 건너뛰고 보고서의 '데이터 출처'에 적습니다.
 
@@ -151,10 +151,47 @@ aws cloudformation deploy --stack-name ${WORKSHOP_NAME}-app-signals-slo \
 
 로컬 검증은 Application Signals 지표 대신 span으로 지연·Fault·호출 수를 계산하고(`local/local_collector.py`), SQL Server 엔진 지표는 없습니다(EKS 기본 경로와 같음). 1회 실행 값이며 반복 측정이 아닙니다.
 
+## 실제 배포에서 확인한 것 (별도 환경)
+
+이 모듈의 서비스·스크립트는 아직 EKS에 배포해 보지 않았습니다. 대신 같은 `amazon-cloudwatch-observability` add-on
+(v6.7.0-eksbuild.1)으로 Python 서비스 2개(주문 → 재고 → Aurora PostgreSQL)를 계측한 별도 배포(2026-10-12, 서울)에서
+X-Ray 트레이스와 Application Signals 응답을 보고, 이 모듈이 기대는 가정을 맞춰 봤습니다.
+
+| 가정 | 실제 값 | 결과 |
+|---|---|---|
+| Environment는 `eks:<클러스터>/<네임스페이스>` | `eks:<클러스터>/dbaops-demo` | 맞음 |
+| 서비스 지표 | `ApplicationSignals` 네임스페이스 `Latency`·`Error`·`Fault`, 차원 [Environment, Service] | 맞음 |
+| DB 호출의 원격 서비스·오퍼레이션 | `aws.remote.service=postgresql`, `aws.remote.operation=SELECT` | 맞음 |
+| DB 식별자 (`DB::Connection`) | `<db>\|<Aurora 클러스터 엔드포인트>\|5432` → `[db\|]host[\|port]` 형식 | 맞음 |
+| 서비스 간 호출의 원격 서비스 이름 | URL의 host:port 그대로 (`<svc>.<ns>.svc.cluster.local:8080`) | 포트만 떼던 처리로는 못 맞춤 → 고침 |
+
+고친 것(`rca/collector.py`, `rca/analysis.py`의 `service_name`): 원격 서비스 이름에서 포트와 쿠버네티스 DNS 접미사를 떼고,
+`ListServices`의 계측된 서비스 이름과 같으면 하위 서비스로 따라 내려갑니다. 이전에는 `ListServiceDependencies`가 그 호출을
+계측된 서비스(`Type=Service` 또는 `RemoteEnvironment` 차원)로 묶어 줄 때만 내려갔습니다. 실제 응답이 어느 쪽인지는 확인하지
+못해서 둘 다 받게 했습니다. 로컬 검증의 span 39,092개에 새 처리를 적용해도 원격 이름은 하나도 바뀌지 않았습니다(로컬은
+짧은 이름 `inventory-service:8080`을 씀).
+
+그 배포에서도 확인하지 못한 것: ADOT Node.js(tedious) 계측, `ListServiceDependencies` 응답, Transaction Search(`aws/spans`,
+그 배포는 X-Ray 저장 경로를 유지), 이 모듈의 `rca.py`를 실제 API로 돌린 결과.
+
+## DB 운영 에이전트와의 관계
+
+화면과 LLM 조사는 [blait/DBAOps-Agent](https://github.com/blait/DBAOps-Agent)(Streamlit UI · Amazon Bedrock AgentCore ·
+MCP 도구)가 맡고, 이 모듈은 그 앞단을 채웁니다.
+
+| | DBAOps-Agent | 이 모듈 (`app-signals/`) |
+|---|---|---|
+| 맡는 일 | 자연어 질문에 답하는 조사·리포트 화면 | 앱 신호를 내는 데모 서비스, 장애 재현, 규칙 기반 RCA |
+| RCA 방식 | 모델이 질문에 맞춰 도구와 순서를 고름 | 고정 절차(골든 지표 → 의존성 → SQL 문장 → 엔진 지표)와 확신도 |
+| 결과 | 대화·차트 | Markdown, JSON(`--format json`) |
+
+잇는 방법(제안, 아직 구현하지 않음): `rca.py --format json` 결과를 에이전트의 근거 입력으로 넘겨, 같은 구간을 다시 조사할 때
+출발점과 반증 대상으로 씁니다. 규칙이 놓친 원인은 에이전트가 찾고, 모델의 추정은 규칙의 수치 근거로 견제하려는 것입니다.
+
 ## 제한과 확인할 점
 
-- **EKS·CloudWatch 경로는 배포해 보지 않았습니다.** add-on 주입, CloudWatch agent의 원격 서비스 이름 해석,
-  `ListServiceDependencies` 응답 모양, Transaction Search 필드 이름은 AWS 문서·ADOT 소스 기준으로 썼습니다.
+- **이 모듈을 EKS에 배포해 보지는 않았습니다.** 위 '실제 배포에서 확인한 것' 밖의 부분(Node.js 계측,
+  `ListServiceDependencies` 응답 모양, Transaction Search 필드 이름)은 AWS 문서·ADOT 소스 기준으로 썼습니다.
 - add-on이 주입하는 ADOT SDK 버전은 add-on 버전을 따릅니다. 로컬 검증은 PyPI·npm의 최신 ADOT로 했습니다.
 - SQL Server 엔진의 잠금 근거(suspended 요청, LCK 대기)는 `custom-metrics` 모듈의 collector가 있어야 나옵니다.
   없으면 RCA는 트레이스(타임아웃·느린 UPDATE)까지만 근거로 듭니다.

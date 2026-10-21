@@ -12,8 +12,11 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+from botocore.exceptions import ClientError  # noqa: E402
+
 from analysis import (DbEvidence, Dependency, EngineReading, Golden, SpanStat, Stat, Window,  # noqa: E402
-                      Windows, diagnose, hour_bounds, parse_identifier, scale_cpu, walk)
+                      Windows, diagnose, hour_bounds, parse_identifier, scale_cpu, service_name, walk)
+from collector import AwsCollector  # noqa: E402
 from report import markdown, to_json  # noqa: E402
 
 ENV = "eks:test-eks/shop"
@@ -238,6 +241,61 @@ class IdentifierTests(unittest.TestCase):
 
     def test_escaped(self):
         self.assertEqual(parse_identifier("we^|ird|h.example|5432"), ("we|ird", "h.example"))
+
+    def test_service_name(self):
+        # ADOT는 HTTP 호출의 원격 서비스를 URL의 host:port로 남긴다 (실제 EKS 트레이스에서 FQDN:8080 확인)
+        for remote, want in [("inventory-service:8080", "inventory-service"),
+                             ("inventory-service.shop.svc.cluster.local:8080", "inventory-service"),
+                             ("inventory-service.shop.svc:8080", "inventory-service"),
+                             ("api.example.com:443", "api.example.com"), ("postgresql", "postgresql")]:
+            self.assertEqual(service_name(remote), want, remote)
+
+
+class _Client:
+    """AwsCollector가 부르는 boto3 클라이언트 흉내 (부른 메서드만)."""
+
+    def __init__(self, **methods):
+        self.__dict__.update(methods)
+
+
+class CollectorDependencyTests(unittest.TestCase):
+    """ListServiceDependencies 응답 → Dependency.kind / remote_service (하위 서비스로 내려갈지)."""
+
+    REMOTE = "inventory-service.shop.svc.cluster.local:8080"
+
+    def collector(self, list_services):
+        dims = [{"Name": "Environment", "Value": ENV}, {"Name": "Service", "Value": "order-api"},
+                {"Name": "Operation", "Value": "POST /orders"}, {"Name": "RemoteService", "Value": self.REMOTE},
+                {"Name": "RemoteOperation", "Value": "POST /reserve"}]
+        item = {"OperationName": "POST /orders", "DependencyOperationName": "POST /reserve",
+                "DependencyKeyAttributes": {"Type": "RemoteService", "Name": self.REMOTE},
+                "MetricReferences": [{"Namespace": "ApplicationSignals", "MetricName": "Latency", "Dimensions": dims}]}
+        appsig = _Client(list_service_dependencies=lambda **kw: {"ServiceDependencies": [item]},
+                         list_services=list_services)
+
+        def metric_data(**kw):
+            return {"MetricDataResults": [{"Id": q["Id"], "Values": []} for q in kw["MetricDataQueries"]]}
+
+        clients = {"application-signals": appsig, "cloudwatch": _Client(get_metric_data=metric_data)}
+        session = _Client(client=lambda name: clients.get(name, _Client()))
+        return AwsCollector("ap-northeast-2", session=session)
+
+    def test_unlinked_remote_matches_instrumented_service(self):
+        summaries = [{"KeyAttributes": {"Type": "Service", "Name": "inventory-service", "Environment": ENV},
+                      "AttributeMaps": [{"InstrumentationType": "INSTRUMENTED"}]},
+                     {"KeyAttributes": {"Type": "Service", "Name": "inventory-service", "Environment": "eks:x/y"}}]
+        c = self.collector(lambda **kw: {"ServiceSummaries": summaries})
+        (d,) = c.dependencies(ENV, "order-api", "POST /orders", WINDOWS)
+        self.assertEqual((d.kind, d.remote_service, d.remote_operation), ("service", "inventory-service", "POST /reserve"))
+
+    def test_without_service_list_it_stays_other(self):
+        def denied(**kw):
+            raise ClientError({"Error": {"Code": "AccessDeniedException", "Message": "no"}}, "ListServices")
+
+        c = self.collector(denied)
+        (d,) = c.dependencies(ENV, "order-api", "POST /orders", WINDOWS)
+        self.assertEqual(d.kind, "other")
+        self.assertIn("사용 못 함", c.sources["Application Signals 서비스 목록"])
 
 
 if __name__ == "__main__":

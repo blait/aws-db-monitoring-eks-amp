@@ -22,7 +22,7 @@ from botocore.awsrequest import AWSRequest
 from botocore.exceptions import BotoCoreError, ClientError
 
 from analysis import (DbEvidence, Dependency, EngineReading, Golden, SpanStat, Stat, hour_bounds, parse_identifier,
-                      scale_cpu)
+                      scale_cpu, service_name)
 from signals import CW_FALLBACK, ENGINE_ALIASES, ENGINE_SIGNALS, promql
 
 NS = "ApplicationSignals"
@@ -45,6 +45,7 @@ class AwsCollector:
         self.label = instance_label
         self.spans_lg = spans_log_group
         self.sources = collections.OrderedDict()   # 출처 → 상태 문장
+        self._known = {}                           # environment → 계측된 서비스 이름
 
     def _ok(self, name, msg="사용"):
         self.sources.setdefault(name, msg)
@@ -121,6 +122,31 @@ class AwsCollector:
         return g
 
     # ---------------------------------------------------------------- 의존성
+    def instrumented_services(self, environment, windows):
+        """같은 Environment의 계측된 서비스 이름 (ListServices). 실패하면 빈 집합 — 의존성 판별은 차원만으로 한다."""
+        if environment in self._known:
+            return self._known[environment]
+        names = set()
+        try:
+            start, end = hour_bounds(windows.baseline.start, windows.incident.end)
+            kw = dict(StartTime=start, EndTime=end)
+            while True:
+                resp = self.appsig.list_services(**kw)
+                for s in resp.get("ServiceSummaries", []):
+                    k = s.get("KeyAttributes", {})
+                    kinds = {m.get("InstrumentationType") for m in s.get("AttributeMaps", [])} - {None}
+                    if k.get("Type") == "Service" and k.get("Environment") == environment and \
+                            kinds != {"UNINSTRUMENTED"}:
+                        names.add(k.get("Name"))
+                if not resp.get("NextToken"):
+                    break
+                kw["NextToken"] = resp["NextToken"]
+            self._ok("Application Signals 서비스 목록")
+        except ERRORS as e:
+            self._fail("Application Signals 서비스 목록", e)
+        self._known[environment] = names
+        return names
+
     def dependencies(self, environment, service, operation, windows):
         items = []
         try:
@@ -141,6 +167,7 @@ class AwsCollector:
             self._fail("Application Signals 의존성", e)
             return []
 
+        known = self.instrumented_services(environment, windows)
         deps, specs = [], {}
         for idx, it in enumerate(items):
             if operation and it.get("OperationName") != operation:
@@ -154,8 +181,10 @@ class AwsCollector:
             ident = dims.get("RemoteResourceIdentifier") or key.get("Identifier")
             rtype = dims.get("RemoteResourceType") or key.get("ResourceType")
             engine = ENGINE_ALIASES.get(remote.lower())
-            if key.get("Type") == "Service" or (dims.get("RemoteEnvironment") and not engine):
-                # 같은 EKS 클러스터의 계측된 서비스는 RemoteEnvironment 차원이 붙는다(AWS 문서)
+            if key.get("Type") == "Service" or (not engine and (dims.get("RemoteEnvironment")
+                                                                 or service_name(remote) in known)):
+                # 같은 EKS 클러스터의 계측된 서비스는 RemoteEnvironment 차원이 붙는다(AWS 문서). 원격 이름이
+                # host:port로만 와도(미계측 원격 서비스로 잡힌 경우) 계측된 서비스 이름과 같으면 따라 내려간다
                 kind = "service"
             elif engine or rtype == "DB::Connection":
                 kind = "db"
@@ -164,8 +193,8 @@ class AwsCollector:
             else:
                 kind = "other"
             if kind == "service":
-                # 서비스 이름에 포트가 붙어 오는 경우(예: inventory-service:8080) 하위 서비스 조회용으로 떼어 낸다
-                remote = key.get("Name") or remote.split(":")[0]
+                # 'inventory-service:8080'·'<svc>.<ns>.svc.cluster.local:8080' → 하위 서비스 조회용 이름
+                remote = (key.get("Type") == "Service" and key.get("Name")) or service_name(remote)
             db_name, host = parse_identifier(ident) if (ident and kind == "db") else (None, None)
             dep = Dependency(caller_operation=it.get("OperationName", ""), remote_service=remote,
                              remote_operation=it.get("DependencyOperationName") or dims.get("RemoteOperation", ""),
